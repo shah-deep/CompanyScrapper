@@ -5,6 +5,7 @@ A comprehensive tool that analyzes a company's homepage, extracts company inform
 ## Features
 
 - **Company Information Extraction**: Uses LLM (Gemini) to extract detailed company information from homepage
+- **Founder Discovery**: Automatically searches for founders when not found during initial extraction
 - **Website Crawling**: Discovers all pages and blog posts within the company's domain
 - **Founder Blog Discovery**: Searches for blogs written by company founders
 - **External Mentions**: Finds external articles and mentions about the company
@@ -68,6 +69,9 @@ python main.py https://example.com --json
 # Skip external searches
 python main.py https://example.com --skip-external --skip-founder-blogs
 
+# Skip founder discovery search
+python main.py https://example.com --skip-founder-search
+
 # Custom output filename
 python main.py https://example.com --output my_company_urls.txt
 ```
@@ -98,6 +102,7 @@ CompanyScrapper/
 ├── main.py                 # Main application entry point
 ├── config.py              # Configuration and settings
 ├── company_extractor.py   # Company information extraction
+├── founder_discovery.py   # Founder discovery when not found initially
 ├── web_crawler.py         # Website crawling and blog discovery
 ├── blog_discovery.py      # Founder blog and external mention search
 ├── url_aggregator.py      # URL compilation and report generation
@@ -123,6 +128,13 @@ Key configuration options in `config.py`:
 - Identifies founders and key people
 - Finds social media links
 - Uses LLM for intelligent extraction (fallback to basic extraction if no API)
+
+### Founder Discovery
+- Automatically searches for founders when not found during initial extraction
+- Searches company website for founder information
+- Uses Google Search to find founder mentions
+- Searches professional networks (LinkedIn, Crunchbase, etc.)
+- Extracts names using intelligent text parsing
 
 ### Website Crawling
 - Crawls all pages within the company domain

@@ -7,6 +7,7 @@ Demonstrates how to use the components programmatically
 from company_extractor import CompanyExtractor
 from web_crawler import WebCrawler
 from blog_discovery import BlogDiscovery
+from founder_discovery import FounderDiscovery
 from url_aggregator import URLAggregator
 import json
 
@@ -14,7 +15,7 @@ def example_usage():
     """Example of how to use the company scraper components"""
     
     # Example company URL
-    company_url = "https://example.com"
+    company_url = "https://interviewing.io/"
     
     print("Company Scraper - Example Usage")
     print("=" * 50)
@@ -23,6 +24,7 @@ def example_usage():
     extractor = CompanyExtractor()
     crawler = WebCrawler()
     blog_discovery = BlogDiscovery()
+    founder_discovery = FounderDiscovery()
     aggregator = URLAggregator()
     
     try:
@@ -38,6 +40,21 @@ def example_usage():
             print("Could not extract company information")
             return
         
+        # Step 1.5: Search for founders if not found
+        founders = company_info.get('founders', [])
+        if not founders:
+            print(f"\n1.5. Searching for founders...")
+            discovered_founders = founder_discovery.search_founders(
+                company_info.get('name', 'Unknown'), 
+                company_url
+            )
+            if discovered_founders:
+                founders = discovered_founders
+                company_info['founders'] = founders
+                print(f"Found founders: {', '.join(founders)}")
+            else:
+                print("No founders found through search")
+        
         # Step 2: Crawl company website
         print(f"\n2. Crawling company website")
         company_pages, blog_posts = crawler.crawl_company_site(company_url, max_pages=10)
@@ -50,7 +67,6 @@ def example_usage():
         aggregator.add_blog_posts(blog_posts)
         
         # Step 3: Search for founder blogs (if founders found)
-        founders = company_info.get('founders', [])
         if founders:
             print(f"\n3. Searching for founder blogs")
             founder_blogs = blog_discovery.search_founder_blogs(

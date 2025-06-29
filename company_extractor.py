@@ -11,7 +11,7 @@ class CompanyExtractor:
     def __init__(self):
         if GEMINI_API_KEY:
             genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
-            self.model = genai.GenerativeModel('gemini-pro')  # type: ignore
+            self.model = genai.GenerativeModel('gemini-2.0-flash-lite')  # type: ignore
         else:
             self.model = None
     

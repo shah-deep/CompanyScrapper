@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from company_extractor import CompanyExtractor
 from web_crawler import WebCrawler
 from blog_discovery import BlogDiscovery
+from founder_discovery import FounderDiscovery
 from url_aggregator import URLAggregator
 from config import GOOGLE_API_KEY, GEMINI_API_KEY
 
@@ -43,6 +44,8 @@ Examples:
                        help='Skip external mentions search (requires Google API)')
     parser.add_argument('--skip-founder-blogs', action='store_true',
                        help='Skip founder blog search (requires Google API)')
+    parser.add_argument('--skip-founder-search', action='store_true',
+                       help='Skip founder discovery search (requires Google API)')
     parser.add_argument('--simple', action='store_true',
                        help='Generate simple URL list only')
     parser.add_argument('--json', action='store_true',
@@ -66,15 +69,17 @@ Examples:
     if not GEMINI_API_KEY:
         print("Warning: GEMINI_API_KEY not found. Company info extraction will use basic methods.")
     
-    if not GOOGLE_API_KEY and (not args.skip_external or not args.skip_founder_blogs):
+    if not GOOGLE_API_KEY and (not args.skip_external or not args.skip_founder_blogs or not args.skip_founder_search):
         print("Warning: GOOGLE_API_KEY not found. External search features will be disabled.")
         args.skip_external = True
         args.skip_founder_blogs = True
+        args.skip_founder_search = True
     
     # Initialize components
     extractor = CompanyExtractor()
     crawler = WebCrawler()
     blog_discovery = BlogDiscovery()
+    founder_discovery = FounderDiscovery()
     aggregator = URLAggregator()
     
     try:
@@ -95,6 +100,22 @@ Examples:
         print(f"Industry: {company_info.get('industry', 'N/A')}")
         print(f"Founders: {', '.join(founders) if founders else 'N/A'}")
         
+        # Step 1.5: Search for founders if not found
+        if not founders and not args.skip_founder_search:
+            print("\n1.5. SEARCHING FOR FOUNDERS")
+            print("-" * 40)
+            discovered_founders = founder_discovery.search_founders(company_name, args.url)
+            if discovered_founders:
+                founders = discovered_founders
+                company_info['founders'] = founders
+                print(f"Updated founders: {', '.join(founders)}")
+            else:
+                print("No founders found through search")
+        elif not founders:
+            print("\n1.5. SKIPPING FOUNDER SEARCH")
+            print("-" * 40)
+            print("Skipped by user request or API unavailable")
+        
         # Step 2: Crawl company website
         print("\n2. CRAWLING COMPANY WEBSITE")
         print("-" * 40)
@@ -103,7 +124,7 @@ Examples:
         aggregator.add_company_pages(company_pages)
         aggregator.add_blog_posts(blog_posts)
         
-        # Step 3: Search for founder blogs (if enabled)
+        # Step 3: Search for founder blogs (if enabled and founders found)
         if not args.skip_founder_blogs and founders:
             print("\n3. SEARCHING FOR FOUNDER BLOGS")
             print("-" * 40)
