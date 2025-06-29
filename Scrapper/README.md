@@ -10,6 +10,7 @@ A powerful web scraping and knowledge extraction application that processes URLs
 - **Subpage File Management**: Creates separate subpage files and tracks new discoveries
 - **Multi-format Support**: Handles HTML pages, PDFs, and plain text files
 - **AI-Powered Extraction**: Uses Gemini AI to extract and structure technical knowledge
+- **Content Chunking**: Automatically processes large content in manageable chunks while maintaining consistency
 - **Markdown Conversion**: Converts content to well-formatted Markdown
 - **MongoDB Storage**: Stores structured knowledge in MongoDB Atlas
 - **Content Validation**: Validates content quality before processing
@@ -51,6 +52,8 @@ A powerful web scraping and knowledge extraction application that processes URLs
 - `MAX_CONCURRENT_REQUESTS`: Number of parallel processes (default: 5, max: CPU cores)
 - `REQUEST_TIMEOUT`: Request timeout in seconds (default: 30)
 - `MAX_CONTENT_LENGTH`: Maximum content length to process (default: 100000)
+- `CHUNK_SIZE`: Size of each content chunk in characters (default: 8000)
+- `CHUNK_OVERLAP`: Overlap between chunks to maintain context (default: 500)
 
 ## Usage
 
@@ -239,6 +242,56 @@ Subpage file: abc_subpage.txt (contains only unprocessed discovered URLs)
 9. **Database Storage**: Saves structured knowledge to MongoDB
 10. **Iterative Refinement**: Continues discovering and processing until no new content is found
 
+## Content Chunking
+
+The application automatically handles large content by breaking it into manageable chunks while maintaining consistency across all chunks.
+
+### How Chunking Works
+
+1. **Size Detection**: Content larger than `CHUNK_SIZE` (default: 8000 characters) triggers chunking
+2. **Smart Chunking**: Content is broken at sentence boundaries to maintain context
+3. **Overlap Management**: Chunks overlap by `CHUNK_OVERLAP` characters to preserve context
+4. **Metadata Extraction**: Content type and author are extracted from the first chunk only
+5. **Parallel Processing**: Each chunk is processed independently for structured content
+6. **Result Combination**: All chunks are combined into a single coherent document
+
+### Chunking Process
+
+```
+Large Content (>8000 chars)
+    ↓
+[Chunk 1] [Chunk 2] [Chunk 3] ... [Chunk N]
+    ↓         ↓         ↓           ↓
+Metadata   Process   Process     Process
+Extraction   Chunk     Chunk       Chunk
+    ↓         ↓         ↓           ↓
+[Combined Structured Content]
+[Combined Full Content]
+```
+
+### Benefits
+
+- **Handles Large Documents**: Processes content of any size without truncation
+- **Maintains Context**: Overlapping chunks preserve context between sections
+- **Consistent Metadata**: Content type and author remain consistent across all chunks
+- **Efficient Processing**: Each chunk is processed independently and in parallel
+- **Quality Preservation**: No information is lost during chunking and combination
+
+### Configuration
+
+- `CHUNK_SIZE`: Size of each chunk in characters (default: 8000)
+- `CHUNK_OVERLAP`: Overlap between chunks (default: 500)
+- `MAX_CONTENT_LENGTH`: Maximum content length to process (default: 100000)
+
+### Example
+
+For a 25,000-character technical document:
+- Creates ~3 chunks of ~8,000 characters each
+- Each chunk overlaps by 500 characters
+- Metadata extracted from first chunk only
+- All chunks processed for technical content
+- Results combined into single structured document
+
 ## Output Format
 
 The application stores knowledge in the following format:
@@ -336,6 +389,20 @@ This will:
 - Run iterative processing with multiprocessing
 - Show results and statistics
 - Clean up test files
+
+### Content Chunking Test
+
+Test the chunking functionality for large content:
+
+```bash
+python test_chunking.py
+```
+
+This will:
+- Create large test content
+- Test chunk creation and boundaries
+- Verify chunk combination
+- Show chunking statistics
 
 ## Troubleshooting
 

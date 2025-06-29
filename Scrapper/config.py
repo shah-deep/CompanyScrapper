@@ -20,6 +20,8 @@ class Config:
     
     # Content Processing
     MAX_CONTENT_LENGTH = int(os.getenv('MAX_CONTENT_LENGTH', '100000'))
+    CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', '8000'))  # Size of each chunk in characters
+    CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', '100'))  # Overlap between chunks to maintain context
     SUPPORTED_CONTENT_TYPES = [
         'text/html',
         'application/pdf',

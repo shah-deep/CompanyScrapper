@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 from google.generativeai.generative_models import GenerativeModel
 from google.generativeai.client import configure
 import json
@@ -22,17 +22,253 @@ class LLMProcessor:
     async def process_content(self, content_data: Dict[str, Any], team_id: str, user_id: str = "") -> Optional[Dict[str, Any]]:
         """Process content through LLM to extract structured knowledge."""
         try:
-            # First, convert content to markdown
-            markdown_content = await self._convert_to_markdown(content_data)
-            
-            # Then extract structured knowledge
-            knowledge_item = await self._extract_knowledge(content_data, markdown_content, team_id, user_id)
-            
-            return knowledge_item
+            # Check if content needs chunking
+            content = content_data.get('content', '')
+            if len(content) > Config.CHUNK_SIZE:
+                self.logger.info(f"Content is large ({len(content)} chars), processing in chunks")
+                return await self._process_content_in_chunks(content_data, team_id, user_id)
+            else:
+                # Process normally for smaller content
+                markdown_content = await self._convert_to_markdown(content_data)
+                knowledge_item = await self._extract_knowledge(content_data, markdown_content, team_id, user_id)
+                return knowledge_item
             
         except Exception as e:
             self.logger.error(f"Error processing content with LLM: {e}")
             return None
+    
+    async def _process_content_in_chunks(self, content_data: Dict[str, Any], team_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Process large content by breaking it into chunks and combining results."""
+        try:
+            content = content_data.get('content', '')
+            title = content_data.get('title', '')
+            url = content_data.get('url', '')
+            content_type = content_data.get('content_type', '')
+            author = content_data.get('author', '')
+
+            # Create chunks
+            chunks = self._create_content_chunks(content)
+            self.logger.info(f"Created {len(chunks)} chunks for processing")
+            
+            # Process first chunk to get metadata (content_type, author)
+            first_chunk_data = {
+                **content_data,
+                'content': chunks[0]
+            }
+            
+            # Convert first chunk to markdown
+            first_markdown = await self._convert_to_markdown(first_chunk_data)
+            
+            # Extract metadata from first chunk
+            metadata_result = await self._extract_metadata_only(first_chunk_data, first_markdown)
+            if not metadata_result:
+                self.logger.warning("Failed to extract metadata from first chunk")
+            else:
+                content_type, author = metadata_result
+            
+            # Process all chunks for content extraction
+            chunk_results = []
+            for i, chunk in enumerate(chunks):
+                self.logger.info(f"Processing chunk {i+1}/{len(chunks)}")
+                
+                chunk_data = {
+                    **content_data,
+                    'content': chunk,
+                    'content_type': content_type,  # Use consistent content_type
+                    'author': author  # Use consistent author
+                }
+                
+                # Convert chunk to markdown
+                chunk_markdown = await self._convert_to_markdown(chunk_data)
+                
+                # Extract structured content from chunk
+                chunk_structured = await self._extract_structured_content_only(chunk_data, chunk_markdown)
+                if chunk_structured:
+                    chunk_results.append({
+                        'markdown': chunk_markdown,
+                        'structured': chunk_structured
+                    })
+            
+            if not chunk_results:
+                self.logger.warning("No valid chunks processed")
+                return None
+            
+            # Combine all chunks
+            combined_markdown = self._combine_chunks([r['markdown'] for r in chunk_results])
+            combined_structured = self._combine_chunks([r['structured'] for r in chunk_results])
+            
+            # Clean the combined content
+            cleaned_fullcontent = self._clean_llm_response(combined_markdown)
+            cleaned_content = self._clean_llm_response(combined_structured)
+            
+            return {
+                "team_id": team_id,
+                "items": [
+                    {
+                        "title": title,
+                        "content": cleaned_content,
+                        "full_content": cleaned_fullcontent,
+                        "content_type": content_type,
+                        "source_url": url,
+                        "author": author
+                    }
+                ]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error processing content in chunks: {e}")
+            return None
+    
+    def _create_content_chunks(self, content: str) -> List[str]:
+        """Create overlapping chunks from content."""
+        chunks = []
+        start = 0
+        
+        while start < len(content):
+            end = start + Config.CHUNK_SIZE
+            
+            # If this is not the last chunk, try to break at a sentence boundary
+            if end < len(content):
+                # Look for sentence endings within the last 200 characters of the chunk
+                search_start = max(start + Config.CHUNK_SIZE - 200, start)
+                search_end = min(end + 200, len(content))
+                
+                # Find the best break point (sentence ending)
+                best_break = end
+                for i in range(search_start, search_end):
+                    if content[i] in '.!?':
+                        # Check if it's followed by whitespace and uppercase letter (likely sentence end)
+                        if i + 1 < len(content) and content[i + 1].isspace():
+                            if i + 2 < len(content) and content[i + 2].isupper():
+                                best_break = i + 1
+                                break
+                
+                end = best_break
+            
+            chunk = content[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+            
+            # Move start position with overlap
+            start = end - Config.CHUNK_OVERLAP
+            if start >= len(content):
+                break
+        
+        return chunks
+    
+    async def _extract_metadata_only(self, content_data: Dict[str, Any], markdown_content: str) -> Optional[Tuple[str, str]]:
+        """Extract only metadata (content_type, author) from the first chunk."""
+        try:
+            title = content_data.get('title', '')
+            content_type = content_data.get('content_type', '')
+            author = content_data.get('author', '')
+            url = content_data.get('url', '')
+            
+            prompt = f"""
+            Analyze the following content and extract ONLY the metadata:
+
+            - Identify the content type (tutorial, documentation, blog post, case study, etc.)
+            - Find author information if not already provided
+
+            Content Information:
+            - Title: {title}
+            - Current Content Type: {content_type}
+            - Current Authors: {author}
+            - URL: {url}
+
+            Content (Markdown):
+            {markdown_content}
+
+            "content_type|author"
+            
+            Where:
+            - content_type: the identified content type
+            - author: the found authors (single author or comma separated list string or original or empty string)
+            """
+            
+            response = self.model.generate_content(prompt)
+            
+            if not response.text:
+                return None
+            
+            response_text = response.text.strip()
+            
+           
+            try:
+                parts = response_text.split("|", 2)
+                if len(parts) == 3:
+                    _, extracted_content_type, extracted_author = parts
+                    
+                    # Use extracted values if they're more specific than original
+                    final_content_type = extracted_content_type if extracted_content_type and extracted_content_type != 'blog' else content_type
+                    final_author = extracted_author if extracted_author and extracted_author != 'Unknown' else author
+                    
+                    return final_content_type, final_author
+            except Exception as e:
+                self.logger.error(f"Error parsing metadata response: {e}")
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting metadata: {e}")
+            return None
+    
+    async def _extract_structured_content_only(self, content_data: Dict[str, Any], markdown_content: str) -> Optional[str]:
+        """Extract only structured content from a chunk."""
+        try:
+            title = content_data.get('title', '')
+            content_type = content_data.get('content_type', '')
+            
+            prompt = f"""
+            Extract structured technical knowledge from this content chunk:
+
+            Content Information:
+            - Title: {title}
+            - Content Type: {content_type}
+
+            Content Chunk (Markdown):
+            {markdown_content}
+
+            Extract and structure the technical knowledge from this chunk:
+            - Technical concepts and explanations
+            - Best practices and methodologies  
+            - Code examples and technical solutions
+            - Industry insights and trends
+            - Practical tips and recommendations
+
+            If this chunk does not contain technical information, return an empty string.
+            Return only the structured technical knowledge in markdown format.
+            Focus on the technical content present in this specific chunk.
+            """
+            
+            response = self.model.generate_content(prompt)
+            
+            if response.text:
+                return response.text.strip()
+            else:
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error extracting structured content from chunk: {e}")
+            return None
+    
+    def _combine_chunks(self, chunks: List[str]) -> str:
+        """Combine multiple chunks into a single coherent document."""
+        if not chunks:
+            return ""
+        
+        if len(chunks) == 1:
+            return chunks[0]
+        
+        # Combine chunks with proper spacing
+        combined = ""
+        for i, chunk in enumerate(chunks):
+            if i > 0:
+                # Add separator between chunks
+                combined += "\n\n---\n\n"
+            combined += chunk
+        
+        return combined
     
     async def _convert_to_markdown(self, content_data: Dict[str, Any]) -> str:
         """Convert content to markdown format using LLM."""
@@ -83,7 +319,7 @@ class LLMProcessor:
         """Extract structured knowledge from content."""
         try:
             title = content_data.get('title', '')
-            content_type = content_data.get('content_type', 'blog')
+            content_type = content_data.get('content_type', '')
             author = content_data.get('author', '')
             url = content_data.get('url', '')
             
@@ -187,6 +423,7 @@ class LLMProcessor:
         except Exception as e:
             self.logger.error(f"Error extracting knowledge: {e}")
             return None
+
     def _clean_llm_response(self, response: str) -> str:
         """Clean and format LLM response."""
         # Remove any markdown code blocks that might wrap the response

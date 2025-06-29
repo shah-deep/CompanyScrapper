@@ -19,7 +19,7 @@ class URLProcessor:
         
         # Improved filtering patterns
         self.skip_patterns = [
-            r'\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|jpg|jpeg|png|gif|svg|ico|css|js|xml|json|txt|csv)$',
+            r'\.(doc|docx|xls|xlsx|ppt|pptx|zip|rar|jpg|jpeg|png|gif|svg|ico|css|js|xml|json|txt|csv)$',
             r'/(admin|login|logout|register|api|ajax|search|tag|category|author|user|profile)/',
             r'#.*$',  # Skip anchors
             r'\?(utm_|fbclid|gclid|ref=)',  # Skip tracking parameters
