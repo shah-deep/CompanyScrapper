@@ -89,12 +89,52 @@ python main.py urls.txt --team-id your_team_id --user-id user123
 # Use iterative mode for comprehensive discovery
 python main.py urls.txt --team-id your_team_id --iterative
 
+# Choose processing mode: multiprocessing (default) or async
+python main.py urls.txt --team-id your_team_id --processing-mode multiprocessing
+python main.py urls.txt --team-id your_team_id --processing-mode async
+
+# Combine options
+python main.py urls.txt --team-id your_team_id --iterative --processing-mode async
+
 # Search existing knowledge
 python main.py urls.txt --team-id your_team_id --search "python async"
 
 # Show database statistics
 python main.py urls.txt --team-id your_team_id --stats
 ```
+
+## Processing Modes
+
+The application supports two processing modes:
+
+### 1. Multiprocessing Mode (Default)
+- **True Parallelism**: Each URL is processed in a separate process
+- **No GIL Limitations**: Bypasses Python's Global Interpreter Lock
+- **Better CPU Utilization**: Utilizes all available CPU cores
+- **Isolated Processing**: Each process has its own memory space
+- **Fault Tolerance**: Process failures don't affect other processes
+- **Best for**: CPU-intensive tasks, large URL sets, systems with multiple cores
+
+### 2. Async Mode
+- **Concurrent Processing**: Uses asyncio for non-blocking I/O operations
+- **Lower Memory Usage**: Single process with multiple coroutines
+- **Better for I/O-bound tasks**: Network requests, database operations
+- **Simpler Resource Management**: No process pool overhead
+- **Best for**: I/O-intensive tasks, smaller URL sets, memory-constrained systems
+
+### Choosing the Right Mode
+
+- **Use Multiprocessing** when:
+  - You have multiple CPU cores available
+  - Processing large numbers of URLs
+  - Content extraction is CPU-intensive
+  - You want maximum throughput
+
+- **Use Async** when:
+  - You're primarily doing I/O operations (network requests)
+  - Memory is limited
+  - Processing smaller URL sets
+  - You want simpler resource management
 
 ### URL File Format
 
