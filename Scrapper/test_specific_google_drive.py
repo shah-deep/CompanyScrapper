@@ -39,8 +39,11 @@ async def test_google_drive_url():
                 print(f"📁 Extracted file ID: {file_id}")
                 
                 # Build download URL
-                download_url = extractor._build_google_drive_download_url(file_id)
-                print(f"⬇️  Download URL: {download_url}")
+                if file_id:
+                    download_url = extractor._build_google_drive_download_url(file_id)
+                    print(f"⬇️  Download URL: {download_url}")
+                else:
+                    print("❌ Failed to extract file ID from Google Drive URL")
                 print()
             
             # Extract content

@@ -92,7 +92,7 @@ class ContentExtractor:
             return None
     
     async def _extract_google_drive_content(self, url: str) -> Optional[Dict[str, Any]]:
-        """Extract content from Google Drive links."""
+        """Extract content from Google Drive links with improved error handling."""
         try:
             # First, try to get the file ID
             file_id = self._extract_google_drive_file_id(url)
@@ -102,53 +102,122 @@ class ContentExtractor:
             
             self.logger.info(f"Extracted file ID: {file_id}")
             
-            # Try direct download first (works for PDFs and some other files)
-            download_url = self._build_google_drive_download_url(file_id)
+            # Try multiple extraction methods in order of preference
+            # Reordered to try viewer page extraction first as requested
+            extraction_methods = [
+                ("Viewer Page Extraction", lambda: self._extract_pdf_from_google_drive_viewer(url, None)),
+                ("Direct Download", lambda: self._try_direct_download(file_id, url)),
+                ("Alternative Download", lambda: self._try_alternative_download(file_id, url))
+            ]
             
-            try:
-                if not self.session:
-                    self.logger.error("Session not initialized")
-                    return None
-                    
-                async with self.session.get(download_url) as response:
-                    if response and response.status == 200:
-                        content_type = response.headers.get('content-type', '').lower()
-                        
-                        if 'application/pdf' in content_type:
-                            self.logger.info(f"Direct PDF download successful for Google Drive file: {file_id}")
-                            return await self._extract_pdf_content(url, response)
-                        elif 'application/octet-stream' in content_type:
-                            # Try to process as PDF even if content type is octet-stream
-                            self.logger.info(f"Got octet-stream, attempting to process as PDF for Google Drive file: {file_id}")
-                            try:
-                                return await self._extract_pdf_content(url, response)
-                            except Exception as e:
-                                self.logger.warning(f"Failed to process octet-stream as PDF: {e}")
-                                # Fall back to viewer page extraction
-                                return await self._extract_pdf_from_google_drive_viewer(url, None)
-                        elif 'text/html' in content_type:
-                            # This might be a Google Drive viewer page, try to extract PDF link
-                            self.logger.info(f"Got HTML response, trying to extract PDF link from Google Drive viewer")
-                            return await self._extract_pdf_from_google_drive_viewer(url, response)
-                        else:
-                            self.logger.warning(f"Unsupported content type from Google Drive: {content_type}")
-                            # Try viewer page extraction as fallback
-                            return await self._extract_pdf_from_google_drive_viewer(url, None)
+            for method_name, method_func in extraction_methods:
+                try:
+                    self.logger.info(f"Trying {method_name} for Google Drive file: {file_id}")
+                    result = await method_func()
+                    if result:
+                        self.logger.info(f"SUCCESS: {method_name} successful for Google Drive file: {file_id}")
+                        return result
                     else:
-                        self.logger.warning(f"Direct download failed, status: {response.status if response else 'No response'}")
-                        # Fall back to viewer page extraction
-                        return await self._extract_pdf_from_google_drive_viewer(url, None)
-                        
-            except Exception as e:
-                self.logger.warning(f"Direct download failed: {e}, trying viewer page extraction")
-                return await self._extract_pdf_from_google_drive_viewer(url, None)
+                        self.logger.warning(f"FAILED: {method_name} failed for Google Drive file: {file_id}")
+                except Exception as e:
+                    self.logger.warning(f"ERROR: {method_name} failed with error: {e}")
+                    continue
+            
+            # If all methods fail, return a basic content structure
+            self.logger.warning(f"All extraction methods failed for Google Drive file: {file_id}")
+            return {
+                'url': url,
+                'title': f"Google Drive File: {file_id}",
+                'content': f"Unable to extract content from Google Drive file: {file_id}. The file may be restricted or require authentication.",
+                'author': '',
+                'content_type': 'book'
+            }
                 
         except Exception as e:
             self.logger.error(f"Error extracting Google Drive content: {e}")
             return None
     
+    async def _try_direct_download(self, file_id: str, original_url: str) -> Optional[Dict[str, Any]]:
+        """Try direct download method for Google Drive files."""
+        try:
+            download_url = self._build_google_drive_download_url(file_id)
+            
+            if not self.session:
+                self.logger.error("Session not initialized")
+                return None
+                
+            async with self.session.get(download_url) as response:
+                if response and response.status == 200:
+                    content_type = response.headers.get('content-type', '').lower()
+                    
+                    if 'application/pdf' in content_type:
+                        self.logger.info(f"Direct PDF download successful for Google Drive file: {file_id}")
+                        return await self._extract_pdf_content(original_url, response)
+                    elif 'application/octet-stream' in content_type:
+                        # Try to process as PDF even if content type is octet-stream
+                        self.logger.info(f"Got octet-stream, attempting to process as PDF for Google Drive file: {file_id}")
+                        try:
+                            return await self._extract_pdf_content(original_url, response)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to process octet-stream as PDF: {e}")
+                            return None
+                    elif 'text/html' in content_type:
+                        # This might be a Google Drive viewer page
+                        self.logger.info(f"Got HTML response from direct download, trying to extract PDF link")
+                        return await self._extract_pdf_from_google_drive_viewer(original_url, response)
+                    else:
+                        self.logger.warning(f"Unsupported content type from direct download: {content_type}")
+                        return None
+                else:
+                    self.logger.warning(f"Direct download failed, status: {response.status if response else 'No response'}")
+                    return None
+                    
+        except Exception as e:
+            self.logger.warning(f"Direct download failed: {e}")
+            return None
+    
+    async def _try_alternative_download(self, file_id: str, original_url: str) -> Optional[Dict[str, Any]]:
+        """Try alternative download methods for Google Drive files."""
+        try:
+            # Try different download URL formats
+            alternative_urls = [
+                f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t",
+                f"https://docs.google.com/document/d/{file_id}/export?format=pdf",
+                f"https://drive.google.com/file/d/{file_id}/preview"
+            ]
+            
+            for alt_url in alternative_urls:
+                try:
+                    if not self.session:
+                        self.logger.error("Session not initialized")
+                        continue
+                        
+                    async with self.session.get(alt_url) as response:
+                        if response and response.status == 200:
+                            content_type = response.headers.get('content-type', '').lower()
+                            
+                            if 'application/pdf' in content_type:
+                                self.logger.info(f"Alternative download successful: {alt_url}")
+                                return await self._extract_pdf_content(original_url, response)
+                            elif 'application/octet-stream' in content_type:
+                                try:
+                                    return await self._extract_pdf_content(original_url, response)
+                                except Exception as e:
+                                    self.logger.debug(f"Failed to process alternative URL as PDF: {e}")
+                                    continue
+                            
+                except Exception as e:
+                    self.logger.debug(f"Alternative URL failed: {alt_url} - {e}")
+                    continue
+            
+            return None
+            
+        except Exception as e:
+            self.logger.warning(f"Alternative download methods failed: {e}")
+            return None
+    
     async def _extract_pdf_from_google_drive_viewer(self, url: str, response: Optional[aiohttp.ClientResponse]) -> Optional[Dict[str, Any]]:
-        """Extract PDF from Google Drive viewer page."""
+        """Extract PDF from Google Drive viewer page with improved error handling."""
         try:
             # If we don't have a response, fetch the viewer page
             if not response:
@@ -156,19 +225,28 @@ class ContentExtractor:
                     self.logger.error("Session not initialized")
                     return None
                     
-                async with self.session.get(url) as response:
-                    if response and response.status != 200:
-                        self.logger.error(f"Failed to fetch Google Drive viewer page: {response.status if response else 'No response'}")
-                        return None
-                    elif not response:
-                        self.logger.error("Failed to fetch Google Drive viewer page: No response")
-                        return None
+                try:
+                    async with self.session.get(url) as response:
+                        if response and response.status != 200:
+                            self.logger.error(f"Failed to fetch Google Drive viewer page: {response.status if response else 'No response'}")
+                            return None
+                        elif not response:
+                            self.logger.error("Failed to fetch Google Drive viewer page: No response")
+                            return None
+                except Exception as e:
+                    self.logger.error(f"Error fetching Google Drive viewer page: {e}")
+                    return None
             
             if not response:
                 self.logger.error("No response available for Google Drive viewer")
                 return None
             
-            html = await response.text()
+            try:
+                html = await response.text()
+            except Exception as e:
+                self.logger.error(f"Error reading response text: {e}")
+                return None
+                
             soup = BeautifulSoup(html, 'html.parser')
             
             # Try to find PDF download links in the page
@@ -180,28 +258,57 @@ class ContentExtractor:
                 r"'([^']*\.pdf)'",
                 r'https://[^"\s]*\.pdf',
                 r'https://drive\.google\.com/uc[^"\s]*',
-                r'https://docs\.google\.com/[^"\s]*/export\?format=pdf[^"\s]*'
+                r'https://docs\.google\.com/[^"\s]*/export\?format=pdf[^"\s]*',
+                r'https://drive\.google\.com/file/d/[^/]+/view[^"\s]*',
+                r'https://drive\.google\.com/open\?id=[^"\s]*'
             ]
             
             for pattern in patterns:
-                matches = re.findall(pattern, html, re.IGNORECASE)
-                pdf_links.extend(matches)
+                try:
+                    matches = re.findall(pattern, html, re.IGNORECASE)
+                    pdf_links.extend(matches)
+                except Exception as e:
+                    self.logger.debug(f"Error with pattern {pattern}: {e}")
+                    continue
             
             # Also look for iframe sources that might contain PDF viewers
-            iframes = soup.find_all('iframe')
-            for iframe in iframes:
-                if isinstance(iframe, Tag):
-                    src = iframe.get('src', '')
-                    if isinstance(src, str) and ('pdf' in src.lower() or 'drive.google.com' in src):
-                        pdf_links.append(src)
+            try:
+                iframes = soup.find_all('iframe')
+                for iframe in iframes:
+                    if isinstance(iframe, Tag):
+                        src = iframe.get('src', '')
+                        if isinstance(src, str) and ('pdf' in src.lower() or 'drive.google.com' in src):
+                            pdf_links.append(src)
+            except Exception as e:
+                self.logger.debug(f"Error processing iframes: {e}")
             
             # Try to find Google Drive export URLs
-            export_links = soup.find_all('a', href=True)
-            for link in export_links:
-                if isinstance(link, Tag):
-                    href = link.get('href', '')
-                    if isinstance(href, str) and 'export' in href and 'format=pdf' in href:
-                        pdf_links.append(href)
+            try:
+                export_links = soup.find_all('a', href=True)
+                for link in export_links:
+                    if isinstance(link, Tag):
+                        href = link.get('href', '')
+                        if isinstance(href, str) and ('export' in href or 'download' in href or 'format=pdf' in href):
+                            pdf_links.append(href)
+            except Exception as e:
+                self.logger.debug(f"Error processing export links: {e}")
+            
+            # Try to find embedded PDF data
+            try:
+                # Look for embedded PDF data in the page
+                pdf_data_patterns = [
+                    r'data:application/pdf;base64,([A-Za-z0-9+/=]+)',
+                    r'"pdfUrl":"([^"]+)"',
+                    r"'pdfUrl':'([^']+)'",
+                    r'"downloadUrl":"([^"]+)"',
+                    r"'downloadUrl':'([^']+)'"
+                ]
+                
+                for pattern in pdf_data_patterns:
+                    matches = re.findall(pattern, html, re.IGNORECASE)
+                    pdf_links.extend(matches)
+            except Exception as e:
+                self.logger.debug(f"Error processing embedded PDF data: {e}")
             
             # Remove duplicates and try each link
             unique_links = list(set(pdf_links))
@@ -225,7 +332,7 @@ class ContentExtractor:
                     async with self.session.get(pdf_link) as pdf_response:
                         if pdf_response and pdf_response.status == 200:
                             content_type = pdf_response.headers.get('content-type', '').lower()
-                            if 'application/pdf' in content_type:
+                            if 'application/pdf' in content_type or 'application/octet-stream' in content_type:
                                 self.logger.info(f"Successfully found PDF at: {pdf_link}")
                                 return await self._extract_pdf_content(url, pdf_response)
                             
@@ -235,7 +342,11 @@ class ContentExtractor:
             
             # If no PDF found, try to extract text content from the viewer page
             self.logger.info("No PDF found, extracting text from Google Drive viewer page")
-            return await self._extract_html_content(url, response)
+            try:
+                return await self._extract_html_content(url, response)
+            except Exception as e:
+                self.logger.error(f"Error extracting HTML content from viewer page: {e}")
+                return None
             
         except Exception as e:
             self.logger.error(f"Error extracting PDF from Google Drive viewer: {e}")
@@ -371,8 +482,8 @@ class ContentExtractor:
         text = text.strip()
         
         # Limit content length
-        if len(text) > Config.MAX_CONTENT_LENGTH:
-            text = text[:Config.MAX_CONTENT_LENGTH] + "..."
+        # if len(text) > Config.MAX_CONTENT_LENGTH:
+        #     text = text[:Config.MAX_CONTENT_LENGTH] + "..."
         
         return text
     

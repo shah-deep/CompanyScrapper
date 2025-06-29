@@ -3,7 +3,7 @@
 - [x] Author is not retrived in many cases
 - [x] Only convert the page contents to markdown format, do not modify, shortern or change any content
 - [ ] Filter to be added in Crawler to skip certain url patters with certain words (like Reddit), but making sure the word is not in company name or url.
-- [ ] Support for PDFs & Google Drive links
+- [x] Support for PDFs & Google Drive links
 - [x] Skip pages that do not have technical info, those like terms page or some general page.
 - [x] When processing a link, ignore links that are external.
 - [x] Remove the urls from _sub file the ones which are in main file.

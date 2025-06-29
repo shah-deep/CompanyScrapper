@@ -444,13 +444,10 @@ class LLMProcessor:
         try:
             content = content_data.get('content', '')
             title = content_data.get('title', '')
+            content_type = content_data.get('content_type', '')
             
             # Skip if content is too short
             if len(content) < 100:
-                return False
-            
-            # Skip if title is missing or too short
-            if not title or len(title) < 5:
                 return False
             
             # Check for technical keywords
@@ -459,13 +456,38 @@ class LLMProcessor:
                 'algorithm', 'database', 'framework', 'library', 'function', 'class',
                 'method', 'variable', 'loop', 'condition', 'error', 'debug', 'test',
                 'deploy', 'server', 'client', 'frontend', 'backend', 'database',
-                'security', 'performance', 'optimization', 'architecture', 'design'
+                'security', 'performance', 'optimization', 'architecture', 'design',
+                'interview', 'coding', 'technical', 'computer', 'system', 'application',
+                'data', 'analysis', 'machine', 'learning', 'artificial', 'intelligence',
+                'web', 'mobile', 'cloud', 'network', 'protocol', 'interface'
             ]
             
             content_lower = content.lower()
             has_technical_content = any(keyword in content_lower for keyword in technical_keywords)
             
-            return has_technical_content
+            # If we have technical content, accept it regardless of title
+            if has_technical_content:
+                return True
+            
+            # If no technical keywords found, check if it's a book or document type
+            # Books and documents might not have obvious technical keywords but could be valuable
+            if content_type in ['book', 'document', 'pdf', 'manual', 'guide'] and len(content) > 1000:
+                return True
+            
+            # If title is missing but content is substantial, check for any technical indicators
+            if not title or len(title) < 5:
+                # Look for any technical indicators in the first 2000 characters
+                sample_content = content[:2000].lower()
+                technical_indicators = [
+                    'chapter', 'section', 'problem', 'solution', 'example', 'implementation',
+                    'design', 'pattern', 'structure', 'model', 'approach', 'methodology',
+                    'practice', 'principle', 'concept', 'theory', 'framework', 'architecture'
+                ]
+                has_indicators = any(indicator in sample_content for indicator in technical_indicators)
+                if has_indicators and len(content) > 2000:
+                    return True
+            
+            return False
             
         except Exception as e:
             self.logger.error(f"Error validating content: {e}")
