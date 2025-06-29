@@ -123,6 +123,8 @@ class DatabaseHandler:
     
     def save_knowledge_item_sync(self, knowledge_data: Dict[str, Any]) -> bool:
         """Synchronous version of save_knowledge_item for multiprocessing workers."""
+        import asyncio
+        
         # Create a new event loop for this thread/process
         try:
             loop = asyncio.get_event_loop()
@@ -131,7 +133,17 @@ class DatabaseHandler:
             asyncio.set_event_loop(loop)
         
         try:
-            return loop.run_until_complete(self.save_knowledge_item(knowledge_data))
+            # Create a new database handler and connect
+            temp_handler = DatabaseHandler()
+            loop.run_until_complete(temp_handler.connect())
+            
+            # Run the save operation
+            result = loop.run_until_complete(temp_handler.save_knowledge_item(knowledge_data))
+            
+            # Clean up connection
+            loop.run_until_complete(temp_handler.disconnect())
+            
+            return result
         finally:
             if loop.is_running():
                 loop.close()
@@ -236,6 +248,8 @@ class DatabaseHandler:
     
     def get_statistics_sync(self) -> Dict[str, Any]:
         """Synchronous version of get_statistics for multiprocessing workers."""
+        import asyncio
+        
         # Create a new event loop for this thread/process
         try:
             loop = asyncio.get_event_loop()
@@ -244,7 +258,17 @@ class DatabaseHandler:
             asyncio.set_event_loop(loop)
         
         try:
-            return loop.run_until_complete(self.get_statistics())
+            # Create a new database handler and connect
+            temp_handler = DatabaseHandler()
+            loop.run_until_complete(temp_handler.connect())
+            
+            # Run the statistics operation
+            result = loop.run_until_complete(temp_handler.get_statistics())
+            
+            # Clean up connection
+            loop.run_until_complete(temp_handler.disconnect())
+            
+            return result
         finally:
             if loop.is_running():
                 loop.close() 

@@ -63,3 +63,4 @@ logs/
 *.temp 
 
 .venv/
+.cursorignore

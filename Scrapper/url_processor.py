@@ -262,6 +262,7 @@ class URLProcessor:
     def discover_subpages_sync(self, url: str) -> List[str]:
         """Synchronous version of discover_subpages for multiprocessing workers."""
         import asyncio
+        import aiohttp
         
         # Create a new event loop for this thread/process
         try:
@@ -271,7 +272,23 @@ class URLProcessor:
             asyncio.set_event_loop(loop)
         
         try:
-            return loop.run_until_complete(self.discover_subpages(url))
+            # Create a new session for this process
+            session = aiohttp.ClientSession(
+                headers={'User-Agent': Config.USER_AGENT},
+                timeout=aiohttp.ClientTimeout(total=Config.REQUEST_TIMEOUT)
+            )
+            
+            # Create a temporary processor with the session
+            temp_processor = URLProcessor()
+            temp_processor.session = session
+            
+            # Run the discovery
+            result = loop.run_until_complete(temp_processor.discover_subpages(url))
+            
+            # Clean up session
+            loop.run_until_complete(session.close())
+            
+            return result
         finally:
             if loop.is_running():
                 loop.close() 

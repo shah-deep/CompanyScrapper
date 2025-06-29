@@ -222,6 +222,7 @@ class ContentExtractor:
     def extract_content_sync(self, url: str) -> Optional[Dict[str, Any]]:
         """Synchronous version of extract_content for multiprocessing workers."""
         import asyncio
+        import aiohttp
         
         # Create a new event loop for this thread/process
         try:
@@ -231,7 +232,23 @@ class ContentExtractor:
             asyncio.set_event_loop(loop)
         
         try:
-            return loop.run_until_complete(self.extract_content(url))
+            # Create a new session for this process
+            session = aiohttp.ClientSession(
+                headers={'User-Agent': Config.USER_AGENT},
+                timeout=aiohttp.ClientTimeout(total=Config.REQUEST_TIMEOUT)
+            )
+            
+            # Create a temporary extractor with the session
+            temp_extractor = ContentExtractor()
+            temp_extractor.session = session
+            
+            # Run the extraction
+            result = loop.run_until_complete(temp_extractor.extract_content(url))
+            
+            # Clean up session
+            loop.run_until_complete(session.close())
+            
+            return result
         finally:
             if loop.is_running():
                 loop.close() 

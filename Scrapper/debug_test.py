@@ -21,7 +21,11 @@ def debug_iterative_scraping():
     # Create a test URL file
     test_file = "debug_urls.txt"
     test_urls = [
-        "https://interviewing.io/blog"
+        "https://interviewing.io/mocks/google-system-design-distributed-databases",
+        "https://interviewing.io/mocks/google-java-order-statistic-of-an-unsorted-array",
+        "https://interviewing.io/mocks/linked-in-java-reverse-word-in-string",
+        "https://interviewing.io/mocks/airbnb-python-missing-item-list-difference",
+        "https://interviewing.io/mocks/microsoft-go-vertex-distance-order-statistic"
     ]
     
     # Write test URLs to file

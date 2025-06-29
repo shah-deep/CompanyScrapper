@@ -246,8 +246,7 @@ class KnowledgeScraper:
                         self.stats['errors'].append(f"Error processing {url}: {result['error']}")
                 else:
                     self.stats['urls_failed'] += 1
-                    self.stats['urls_failed'] += 1
-                
+                    
             except Exception as e:
                 self.stats['urls_failed'] += 1
                 self.stats['errors'].append(f"Error processing {url}: {str(e)}")
