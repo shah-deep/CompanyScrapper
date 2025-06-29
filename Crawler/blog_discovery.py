@@ -30,6 +30,7 @@ class BlogDiscovery:
         
         # Thread lock for LLM calls
         self.llm_lock = threading.Lock()
+        self.llm_semaphore = threading.Semaphore(5)
     
     def search_founder_blogs(self, company_name, founders):
         """Search for blogs written by company founders"""
@@ -88,7 +89,7 @@ class BlogDiscovery:
         print(f"Found {len(founder_blogs)} potential founder blogs")
         return founder_blogs
     
-    def search_company_mentions(self, company_name):
+    def search_company_mentions(self, company_name, company_info=None):
         """Search for external mentions and articles about the company with LLM validation"""
         print(f"Searching for external mentions of {company_name}")
         
@@ -144,7 +145,7 @@ class BlogDiscovery:
         # Step 2: LLM validation in parallel
         if self.llm and potential_urls:
             print("Validating URLs with LLM...")
-            validated_urls, rejected_urls = self._validate_urls_with_llm(potential_urls, company_name)
+            validated_urls, rejected_urls = self._validate_urls_with_llm(potential_urls, company_name, company_info)
         else:
             print("LLM not available, using basic validation only")
             validated_urls = potential_urls
@@ -212,7 +213,7 @@ class BlogDiscovery:
             return False
         
         # Check for news/article indicators
-        news_indicators = ['news', 'article', 'press', 'interview', 'review', 'analysis', 'report']
+        news_indicators = ['news', 'article', 'press', 'interview', 'review', 'analysis']
         has_news_indicator = any(indicator in title_lower or indicator in snippet_lower 
                                for indicator in news_indicators)
         
@@ -233,7 +234,7 @@ class BlogDiscovery:
         except:
             return False
     
-    def _validate_urls_with_llm(self, potential_urls, company_name):
+    def _validate_urls_with_llm(self, potential_urls, company_name, company_info):
         """Validate URLs using LLM in parallel"""
         validated_urls = []
         rejected_urls = []
@@ -245,7 +246,7 @@ class BlogDiscovery:
         with ThreadPoolExecutor(max_workers=10) as executor:
             # Submit validation tasks
             future_to_url = {
-                executor.submit(self._validate_single_url_with_llm, url_data, company_name): url_data 
+                executor.submit(self._validate_single_url_with_llm, url_data, company_name, company_info): url_data 
                 for url_data in potential_urls
             }
             
@@ -265,29 +266,48 @@ class BlogDiscovery:
         
         return validated_urls, rejected_urls
     
-    def _validate_single_url_with_llm(self, url_data, company_name):
-        """Validate a single URL using LLM"""
+    def _validate_single_url_with_llm(self, url_data, company_name, company_info):
+        """Validate a single URL using LLM with company context"""
         try:
-            with self.llm_lock:  # Ensure thread safety for LLM calls
+            with self.llm_semaphore: #self.llm_lock:  # Ensure thread safety for LLM calls
                 url = url_data.get('url', '')
                 title = url_data.get('title', '')
                 snippet = url_data.get('snippet', '')
                 
-                prompt = f"""
-                Evaluate if this URL is a high-quality, relevant mention of the company "{company_name}".
+                # Build company context information
+                company_context = ""
+                if company_info:
+                    company_context = f"""
+                Company Information:
+                - Name: {company_info.get('name', company_name)}
+                - Description: {company_info.get('description', 'N/A')}
+                - Industry: {company_info.get('industry', 'N/A')}
+                - Location: {company_info.get('location', 'N/A')}
+                - Products/Services: {', '.join(company_info.get('products_services', []))}
+                - Founders: {', '.join(company_info.get('founders', []))}
+                """
+                else:
+                    company_context = f"Company: {company_name}"
                 
-                URL: {url}
+                prompt = f"""
+                Evaluate if this URL is a high-quality, relevant mention of the company.
+                
+                {company_context}
+                
+                URL to evaluate: {url}
                 Title: {title}
                 Snippet: {snippet}
                 
                 Consider the following criteria:
                 1. Is this a legitimate news article, blog post, or professional content?
-                2. Does it provide meaningful information about the company?
-                3. Is it from a reputable source?
-                4. Is it recent and relevant?
+                2. Does it provide meaningful information about the company or its business?
+                3. Is it from a reputable source (news sites, industry publications, etc.)?
+                4. Is it recent and relevant to the company's current activities?
                 5. Does it contain substantial content about the company (not just a brief mention)?
+                6. Does it relate to the company's industry, products, services, or business activities?
+                7. Is it likely to be useful for understanding the company's market presence, reputation, or business activities?
                 
-                Return only "YES" if the URL meets high-quality standards, or "NO" if it doesn't.
+                Return only "YES" if the URL meets high-quality standards and is genuinely relevant to the company, or "NO" if it doesn't.
                 """
                 
                 response = self.llm.generate_content(prompt)  # type: ignore
