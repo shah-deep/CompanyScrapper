@@ -14,6 +14,28 @@ class URLAggregator:
         }
         self.company_url = None
     
+    def _normalize_url(self, url: str) -> str:
+        """Normalize URL to handle trailing slashes consistently."""
+        if not url:
+            return url
+        
+        # Parse the URL
+        parsed = urlparse(url)
+        
+        # Normalize the path - remove trailing slash unless it's the root path
+        path = parsed.path
+        if path.endswith('/') and len(path) > 1:
+            path = path.rstrip('/')
+        
+        # Reconstruct the URL
+        normalized = f"{parsed.scheme}://{parsed.netloc}{path}"
+        if parsed.query:
+            normalized += f"?{parsed.query}"
+        if parsed.fragment:
+            normalized += f"#{parsed.fragment}"
+        
+        return normalized
+    
     def _get_output_directory(self):
         """Get the output directory for saving files"""
         # Get the project root directory (two levels up from Crawler)
@@ -36,23 +58,68 @@ class URLAggregator:
     
     def add_company_pages(self, pages):
         """Add company website pages"""
-        self.all_urls['company_pages'].extend(pages)
+        # Normalize URLs before adding
+        normalized_pages = []
+        for page in pages:
+            if isinstance(page, dict):
+                normalized_page = page.copy()
+                normalized_page['url'] = self._normalize_url(page.get('url', ''))
+                normalized_pages.append(normalized_page)
+            else:
+                normalized_pages.append(page)
+        self.all_urls['company_pages'].extend(normalized_pages)
     
     def add_blog_posts(self, blogs):
         """Add blog posts from company website"""
-        self.all_urls['blog_posts'].extend(blogs)
+        # Normalize URLs before adding
+        normalized_blogs = []
+        for blog in blogs:
+            if isinstance(blog, dict):
+                normalized_blog = blog.copy()
+                normalized_blog['url'] = self._normalize_url(blog.get('url', ''))
+                normalized_blogs.append(normalized_blog)
+            else:
+                normalized_blogs.append(blog)
+        self.all_urls['blog_posts'].extend(normalized_blogs)
     
     def add_founder_blogs(self, founder_blogs):
         """Add blogs written by founders"""
-        self.all_urls['founder_blogs'].extend(founder_blogs)
+        # Normalize URLs before adding
+        normalized_blogs = []
+        for blog in founder_blogs:
+            if isinstance(blog, dict):
+                normalized_blog = blog.copy()
+                normalized_blog['url'] = self._normalize_url(blog.get('url', ''))
+                normalized_blogs.append(normalized_blog)
+            else:
+                normalized_blogs.append(blog)
+        self.all_urls['founder_blogs'].extend(normalized_blogs)
     
     def add_external_mentions(self, mentions):
         """Add external mentions of the company"""
-        self.all_urls['external_mentions'].extend(mentions)
+        # Normalize URLs before adding
+        normalized_mentions = []
+        for mention in mentions:
+            if isinstance(mention, dict):
+                normalized_mention = mention.copy()
+                normalized_mention['url'] = self._normalize_url(mention.get('url', ''))
+                normalized_mentions.append(normalized_mention)
+            else:
+                normalized_mentions.append(mention)
+        self.all_urls['external_mentions'].extend(normalized_mentions)
     
     def add_potential_urls(self, potential_urls):
         """Add potential URLs that didn't pass LLM validation"""
-        self.all_urls['potential_urls'].extend(potential_urls)
+        # Normalize URLs before adding
+        normalized_urls = []
+        for potential in potential_urls:
+            if isinstance(potential, dict):
+                normalized_potential = potential.copy()
+                normalized_potential['url'] = self._normalize_url(potential.get('url', ''))
+                normalized_urls.append(normalized_potential)
+            else:
+                normalized_urls.append(potential)
+        self.all_urls['potential_urls'].extend(normalized_urls)
     
     def generate_url_list(self, company_name, output_file=None):
         """Generate a comprehensive URL list file"""
@@ -161,13 +228,14 @@ class URLAggregator:
         all_urls.extend([mention['url'] for mention in self.all_urls['external_mentions']])
         all_urls.extend([potential['url'] for potential in self.all_urls['potential_urls']])
 
-        # Remove duplicates while preserving order
-        seen = set()
+        # Remove duplicates using normalized URLs while preserving order
+        seen_normalized = set()
         unique_urls = []
         for url in all_urls:
-            if url not in seen:
-                seen.add(url)
-                unique_urls.append(url)
+            normalized_url = self._normalize_url(url)
+            if normalized_url not in seen_normalized:
+                seen_normalized.add(normalized_url)
+                unique_urls.append(url)  # Keep the original URL format
 
         # If file exists, read existing URLs to avoid duplicates
         existing_urls = set()
@@ -178,8 +246,13 @@ class URLAggregator:
                     if url:
                         existing_urls.add(url)
 
-        # Filter out URLs that are already in the file
-        new_urls = [url for url in unique_urls if url not in existing_urls]
+        # Filter out URLs that are already in the file (using normalized comparison)
+        new_urls = []
+        existing_normalized = {self._normalize_url(url) for url in existing_urls}
+        for url in unique_urls:
+            normalized_url = self._normalize_url(url)
+            if normalized_url not in existing_normalized:
+                new_urls.append(url)
 
         # Append new URLs to the file
         with open(output_file, 'a', encoding='utf-8') as f:
@@ -228,7 +301,9 @@ class URLAggregator:
         all_urls.extend([mention['url'] for mention in self.all_urls['external_mentions']])
         all_urls.extend([potential['url'] for potential in self.all_urls['potential_urls']])
         
-        return len(set(all_urls))
+        # Use normalized URLs for accurate counting
+        normalized_urls = {self._normalize_url(url) for url in all_urls}
+        return len(normalized_urls)
     
     def print_summary(self):
         """Print a summary of discovered URLs"""

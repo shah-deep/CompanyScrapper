@@ -95,7 +95,7 @@ def example_scrapper_usage():
         team_id=team_id,
         processing_mode="multiprocessing",
         save_discovered_urls=True,
-        iterative=True  # Use iterative subpage discovery
+        iterative=False  # Use iterative subpage discovery
     )
     
     if result['success']:
@@ -105,6 +105,7 @@ def example_scrapper_usage():
         print(f"   Total new links found: {stats.get('total_new_links_found', 0)}")
         print(f"   Knowledge items saved: {stats.get('knowledge_items_saved', 0)}")
     
+    '''
     # Example 2: Searching knowledge
     print("\n2. Searching Knowledge")
     print("-" * 40)
@@ -147,7 +148,7 @@ def example_scrapper_usage():
     else:
         print(f"❌ Statistics retrieval failed: {stats_result.get('error', 'Unknown error')}")
 
-
+    '''
 def example_url_extraction():
     """Example of URL extraction from text"""
     print("\n" + "="*60)
@@ -275,9 +276,9 @@ def main():
     print("="*80)
     
     # Run examples
-    example_url_extraction()
-    example_crawler_usage()
-    example_scrapper_usage()
+    # example_url_extraction()
+    # example_crawler_usage()
+    # example_scrapper_usage()
     example_complete_workflow()
     
     print("\n" + "="*80)

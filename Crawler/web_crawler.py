@@ -16,6 +16,28 @@ class WebCrawler:
         self.company_name = None
         self.company_url = None
         self.skip_words = SKIP_URL_WORDS + (custom_skip_words or [])
+    
+    def _normalize_url(self, url: str) -> str:
+        """Normalize URL to handle trailing slashes consistently."""
+        if not url:
+            return url
+        
+        # Parse the URL
+        parsed = urlparse(url)
+        
+        # Normalize the path - remove trailing slash unless it's the root path
+        path = parsed.path
+        if path.endswith('/') and len(path) > 1:
+            path = path.rstrip('/')
+        
+        # Reconstruct the URL
+        normalized = f"{parsed.scheme}://{parsed.netloc}{path}"
+        if parsed.query:
+            normalized += f"?{parsed.query}"
+        if parsed.fragment:
+            normalized += f"#{parsed.fragment}"
+        
+        return normalized
         
     def set_company_info(self, company_name, company_url):
         """Set company information for URL filtering"""
@@ -156,10 +178,12 @@ class WebCrawler:
         while queue and len(self.found_urls) < max_pages:
             current_url = queue.popleft()
             
-            if current_url in self.visited_urls:
+            # Use normalized URL for visited check
+            normalized_current_url = self._normalize_url(current_url)
+            if normalized_current_url in self.visited_urls:
                 continue
             
-            self.visited_urls.add(current_url)
+            self.visited_urls.add(normalized_current_url)
             
             # Only crawl URLs from the same domain
             if not self.is_same_domain(current_url, start_url):
@@ -176,12 +200,16 @@ class WebCrawler:
                 'type': 'page'
             })
             
-            # Add new links to queue
+            # Add new links to queue (using normalized URLs for deduplication)
+            seen_normalized = {self._normalize_url(link) for link in queue}
             for link in links:
-                if (link not in self.visited_urls and 
+                normalized_link = self._normalize_url(link)
+                if (normalized_link not in self.visited_urls and 
+                    normalized_link not in seen_normalized and
                     self.is_same_domain(link, start_url) and
                     len(self.found_urls) < max_pages):
                     queue.append(link)
+                    seen_normalized.add(normalized_link)
             
             # Respect rate limiting
             time.sleep(REQUEST_DELAY)

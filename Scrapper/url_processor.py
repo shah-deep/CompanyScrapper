@@ -28,6 +28,28 @@ class URLProcessor:
             r'/(sitemap|robots)/',  # Skip sitemap and robots
         ]
     
+    def _normalize_url(self, url: str) -> str:
+        """Normalize URL to handle trailing slashes consistently."""
+        if not url:
+            return url
+        
+        # Parse the URL
+        parsed = urlparse(url)
+        
+        # Normalize the path - remove trailing slash unless it's the root path
+        path = parsed.path
+        if path.endswith('/') and len(path) > 1:
+            path = path.rstrip('/')
+        
+        # Reconstruct the URL
+        normalized = f"{parsed.scheme}://{parsed.netloc}{path}"
+        if parsed.query:
+            normalized += f"?{parsed.query}"
+        if parsed.fragment:
+            normalized += f"#{parsed.fragment}"
+        
+        return normalized
+    
     async def __aenter__(self):
         self.session = aiohttp.ClientSession(
             headers={'User-Agent': Config.USER_AGENT},
@@ -81,8 +103,15 @@ class URLProcessor:
                             else:
                                 filtered_count += 1
                 
-                # Remove duplicates and return
-                unique_subpages = list(set(subpages))
+                # Remove duplicates using normalized URLs and return
+                unique_subpages = []
+                seen_normalized = set()
+                for subpage in subpages:
+                    normalized_url = self._normalize_url(subpage)
+                    if normalized_url not in seen_normalized:
+                        seen_normalized.add(normalized_url)
+                        unique_subpages.append(subpage)
+                
                 self.discovered_urls.update(unique_subpages)
                 self.logger.info(f"Discovered {len(unique_subpages)} subpages from {url} (filtered out {filtered_count} links)")
                 return unique_subpages
