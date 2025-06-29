@@ -3,7 +3,7 @@ from googleapiclient.discovery import build
 import time
 import random
 from urllib.parse import urlparse
-from config import GOOGLE_API_KEY, GOOGLE_CSE_ID, USER_AGENTS, FOUNDER_KEYWORDS, GEMINI_API_KEY, GEMINI_MODEL, SKIP_URL_WORDS
+from .config import GOOGLE_API_KEY, GOOGLE_CSE_ID, USER_AGENTS, FOUNDER_KEYWORDS, GEMINI_API_KEY, GEMINI_MODEL, SKIP_URL_WORDS
 import google.generativeai as genai
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed

@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 from urllib.parse import urljoin, urlparse
 import json
-from config import GEMINI_API_KEY, USER_AGENTS, GEMINI_MODEL
+from .config import GEMINI_API_KEY, USER_AGENTS, GEMINI_MODEL
 import random
 import time
 

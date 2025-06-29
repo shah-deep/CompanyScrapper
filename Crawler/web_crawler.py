@@ -1,11 +1,12 @@
-import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse, urldefrag
+import requests
 import time
-import random
+import re
+from urllib.parse import urljoin, urlparse, urldefrag
 from collections import deque
+import random
+from .config import USER_AGENTS, BLOG_KEYWORDS, MAX_PAGES_PER_DOMAIN, REQUEST_DELAY, TIMEOUT, SKIP_URL_WORDS
 import validators
-from config import USER_AGENTS, BLOG_KEYWORDS, MAX_PAGES_PER_DOMAIN, REQUEST_DELAY, TIMEOUT, SKIP_URL_WORDS
 
 class WebCrawler:
     def __init__(self, custom_skip_words=None):

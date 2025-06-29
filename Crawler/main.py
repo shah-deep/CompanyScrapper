@@ -9,12 +9,12 @@ import sys
 import os
 from urllib.parse import urlparse
 
-from company_extractor import CompanyExtractor
-from web_crawler import WebCrawler
-from blog_discovery import BlogDiscovery
-from founder_discovery import FounderDiscovery
-from url_aggregator import URLAggregator
-from config import GOOGLE_API_KEY, GEMINI_API_KEY, SKIP_URL_WORDS
+from .company_extractor import CompanyExtractor
+from .web_crawler import WebCrawler
+from .blog_discovery import BlogDiscovery
+from .founder_discovery import FounderDiscovery
+from .url_aggregator import URLAggregator
+from .config import GOOGLE_API_KEY, GEMINI_API_KEY, SKIP_URL_WORDS
 
 def validate_url(url):
     """Validate if the provided URL is valid"""
