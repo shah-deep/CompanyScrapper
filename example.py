@@ -44,42 +44,42 @@ def example_usage():
             return
         
         # Step 1.5: Search for founders if not found
-        founders = company_info.get('founders', [])
-        if not founders:
-            print(f"\n1.5. Searching for founders...")
-            discovered_founders = founder_discovery.search_founders(
-                company_info.get('name', 'Unknown'), 
-                company_url
-            )
-            if discovered_founders:
-                founders = discovered_founders
-                company_info['founders'] = founders
-                print(f"Found founders: {', '.join(founders)}")
-            else:
-                print("No founders found through search")
+        # founders = company_info.get('founders', [])
+        # if not founders:
+        #     print(f"\n1.5. Searching for founders...")
+        #     discovered_founders = founder_discovery.search_founders(
+        #         company_info.get('name', 'Unknown'), 
+        #         company_url
+        #     )
+        #     if discovered_founders:
+        #         founders = discovered_founders
+        #         company_info['founders'] = founders
+        #         print(f"Found founders: {', '.join(founders)}")
+        #     else:
+        #         print("No founders found through search")
         
-        # Step 2: Crawl company website
-        print(f"\n2. Crawling company website")
-        company_pages, blog_posts = crawler.crawl_company_site(company_url, max_pages=10)
+        # # Step 2: Crawl company website
+        # print(f"\n2. Crawling company website")
+        # company_pages, blog_posts = crawler.crawl_company_site(company_url, max_pages=10)
         
-        print(f"Found {len(company_pages)} company pages")
-        print(f"Found {len(blog_posts)} blog posts")
+        # print(f"Found {len(company_pages)} company pages")
+        # print(f"Found {len(blog_posts)} blog posts")
         
-        # Add to aggregator
-        aggregator.add_company_pages(company_pages)
-        aggregator.add_blog_posts(blog_posts)
+        # # Add to aggregator
+        # aggregator.add_company_pages(company_pages)
+        # aggregator.add_blog_posts(blog_posts)
         
-        # Step 3: Search for founder blogs (if founders found)
-        if founders:
-            print(f"\n3. Searching for founder blogs")
-            founder_blogs = blog_discovery.search_founder_blogs(
-                company_info.get('name', 'Unknown'), 
-                founders
-            )
-            aggregator.add_founder_blogs(founder_blogs)
-            print(f"Found {len(founder_blogs)} founder blogs")
-        else:
-            print(f"\n3. No founders found, skipping founder blog search")
+        # # Step 3: Search for founder blogs (if founders found)
+        # if founders:
+        #     print(f"\n3. Searching for founder blogs")
+        #     founder_blogs = blog_discovery.search_founder_blogs(
+        #         company_info.get('name', 'Unknown'), 
+        #         founders
+        #     )
+        #     aggregator.add_founder_blogs(founder_blogs)
+        #     print(f"Found {len(founder_blogs)} founder blogs")
+        # else:
+        #     print(f"\n3. No founders found, skipping founder blog search")
         
         # Step 4: Search for external mentions
         print(f"\n4. Searching for external mentions")

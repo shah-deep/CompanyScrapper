@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from urllib.parse import urlparse
+import os
 
 class URLAggregator:
     def __init__(self):
@@ -98,9 +99,8 @@ class URLAggregator:
         return output_file
     
     def generate_simple_url_list(self, company_name, output_file=None):
-        """Generate a simple list of just URLs"""
+        """Generate a simple list of just URLs, appending to file if it exists, avoiding duplicates."""
         if output_file is None:
-            # Use company homepage URL without http/https as filename
             from urllib.parse import urlparse
             try:
                 if self.company_url:
@@ -108,33 +108,44 @@ class URLAggregator:
                     domain = parsed_url.netloc
                     output_file = f"{domain}.txt"
                 else:
-                    # Fallback to company name if no URL set
                     output_file = f"{company_name.replace(' ', '_')}.txt"
             except:
-                # Fallback to company name if parsing fails
                 output_file = f"{company_name.replace(' ', '_')}.txt"
-        
+
         print(f"Generating simple URL list: {output_file}")
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            # All URLs in one list
-            all_urls = []
-            all_urls.extend([page['url'] for page in self.all_urls['company_pages']])
-            all_urls.extend([blog['url'] for blog in self.all_urls['blog_posts']])
-            all_urls.extend([blog['url'] for blog in self.all_urls['founder_blogs']])
-            all_urls.extend([mention['url'] for mention in self.all_urls['external_mentions']])
-            
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_urls = []
-            for url in all_urls:
-                if url not in seen:
-                    seen.add(url)
-                    unique_urls.append(url)
-            
-            for url in unique_urls:
+
+        # Gather all URLs from the aggregator
+        all_urls = []
+        all_urls.extend([page['url'] for page in self.all_urls['company_pages']])
+        all_urls.extend([blog['url'] for blog in self.all_urls['blog_posts']])
+        all_urls.extend([blog['url'] for blog in self.all_urls['founder_blogs']])
+        all_urls.extend([mention['url'] for mention in self.all_urls['external_mentions']])
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_urls = []
+        for url in all_urls:
+            if url not in seen:
+                seen.add(url)
+                unique_urls.append(url)
+
+        # If file exists, read existing URLs to avoid duplicates
+        existing_urls = set()
+        if os.path.exists(output_file):
+            with open(output_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    url = line.strip()
+                    if url:
+                        existing_urls.add(url)
+
+        # Filter out URLs that are already in the file
+        new_urls = [url for url in unique_urls if url not in existing_urls]
+
+        # Append new URLs to the file
+        with open(output_file, 'a', encoding='utf-8') as f:
+            for url in new_urls:
                 f.write(f"{url}\n")
-        
+
         print(f"Simple URL list saved to: {output_file}")
         return output_file
     
