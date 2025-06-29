@@ -1,0 +1,12 @@
+# Google Drive PDF URL examples
+# Replace these with actual Google Drive PDF URLs you want to process
+
+# Example formats (replace FILE_ID with actual file IDs):
+# https://drive.google.com/file/d/FILE_ID/view
+# https://docs.google.com/document/d/FILE_ID/edit
+# https://drive.google.com/open?id=FILE_ID
+# https://docs.google.com/spreadsheets/d/FILE_ID/edit
+# https://docs.google.com/presentation/d/FILE_ID/edit
+
+# Add your actual Google Drive PDF URLs below:
+# https://drive.google.com/file/d/YOUR_ACTUAL_FILE_ID/view 
