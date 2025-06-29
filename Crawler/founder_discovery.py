@@ -4,12 +4,12 @@ from googleapiclient.discovery import build
 import time
 import random
 from urllib.parse import urlparse
-from config import GOOGLE_API_KEY, GOOGLE_CSE_ID, USER_AGENTS, GEMINI_API_KEY
+from config import GOOGLE_API_KEY, GOOGLE_CSE_ID, USER_AGENTS, GEMINI_API_KEY, SKIP_URL_WORDS, GEMINI_MODEL
 import google.generativeai as genai
 import json
 
 class FounderDiscovery:
-    def __init__(self):
+    def __init__(self, custom_skip_words=None):
         self.google_service = None
         if GOOGLE_API_KEY and GOOGLE_CSE_ID:
             try:
@@ -23,10 +23,47 @@ class FounderDiscovery:
         if GEMINI_API_KEY:
             try:
                 genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
-                self.llm = genai.GenerativeModel(Config.GEMINI_MODEL)  # type: ignore
+                self.llm = genai.GenerativeModel(GEMINI_MODEL)  # type: ignore
             except Exception as e:
                 print(f"Error initializing LLM: {str(e)}")
                 self.llm = None
+        
+        # Company info for URL filtering
+        self.company_name = None
+        self.company_url = None
+        self.skip_words = SKIP_URL_WORDS + (custom_skip_words or [])
+    
+    def set_company_info(self, company_name, company_url):
+        """Set company information for URL filtering"""
+        self.company_name = company_name
+        self.company_url = company_url
+    
+    def should_skip_url(self, url):
+        """Check if URL should be skipped based on skip words, but preserve if word is in company name or URL"""
+        if not self.company_name or not self.company_url:
+            return False
+        
+        url_lower = url.lower()
+        company_name_lower = self.company_name.lower()
+        company_url_lower = self.company_url.lower()
+        
+        for skip_word in self.skip_words:
+            skip_word_lower = skip_word.lower()
+            
+            # Check if skip word is in the URL
+            if skip_word_lower in url_lower:
+                # But don't skip if the word is part of the company name
+                if skip_word_lower in company_name_lower:
+                    continue
+                
+                # Or if the word is part of the company URL
+                if skip_word_lower in company_url_lower:
+                    continue
+                
+                # Skip this URL
+                return True
+        
+        return False
     
     def search_founders(self, company_name, company_url):
         """Search for company founders using web search and LLM extraction"""
@@ -38,9 +75,25 @@ class FounderDiscovery:
         if self.google_service:
             web_founders = self._web_search_founders(company_name, company_url)
             founders.extend(web_founders)
+            
+            # If we found founders, stop searching
+            if founders:
+                print(f"Founders discovered through web search. Stopping search.")
+                # Remove duplicates while preserving order
+                seen = set()
+                unique_founders = []
+                for founder in founders:
+                    if founder.lower() not in seen:
+                        seen.add(founder.lower())
+                        unique_founders.append(founder)
+                
+                print(f"Found {len(unique_founders)} potential founders: {', '.join(unique_founders)}")
+                return unique_founders
         
         # Method 2: Search company website for founder information (fallback)
+        # Only if no founders found through web search
         if not founders:
+            print("No founders found through web search, trying company website...")
             website_founders = self._search_company_website(company_name, company_url)
             founders.extend(website_founders)
         
@@ -80,6 +133,14 @@ class FounderDiscovery:
             try:
                 results = self._google_search(query, max_results=5)
                 all_search_results.extend(results)
+                
+                # If we have enough results, try to extract founders early
+                if len(all_search_results) >= 10:
+                    early_founders = self._extract_founder_names_with_llm(company_name, all_search_results)
+                    if early_founders:
+                        print(f"Founders found early with query: {query}")
+                        return early_founders
+                
                 time.sleep(2)  # Rate limiting
             except Exception as e:
                 print(f"Error searching for '{query}': {str(e)}")
@@ -222,6 +283,11 @@ class FounderDiscovery:
                         # Extract names near founder keywords
                         names = self._extract_names_near_keywords(soup, founder_indicators)
                         founders.extend(names)
+                        
+                        # If we found founders, stop searching
+                        if founders:
+                            print(f"Founders found on company website at: {url}")
+                            return founders
                     
                     time.sleep(1)  # Rate limiting
                     

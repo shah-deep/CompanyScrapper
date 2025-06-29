@@ -32,4 +32,25 @@ BLOG_KEYWORDS = [
 FOUNDER_KEYWORDS = [
     'founder', 'co-founder', 'ceo', 'cto', 'coo', 'president',
     'director', 'executive', 'leadership', 'team', 'about'
+]
+
+# URL filtering - words to skip in URLs (but not if they're in company name or URL)
+# These words will be skipped when found in external URLs, but preserved if they're part of the company name or URL
+SKIP_URL_WORDS = ['reddit']
+
+"""   
+Other options to skip:  
+['facebook', 'twitter', 'instagram', 'tiktok', 'youtube',
+    'linkedin', 'pinterest', 'snapchat', 'whatsapp', 'telegram',
+    'discord', 'slack', 'zoom', 'teams', 'meetup', 'eventbrite',
+    'amazon', 'ebay', 'etsy', 'shopify', 'walmart', 'target',
+    'craigslist', 'kijiji', 'gumtree', 'offerup', 'letgo',
+    'yelp', 'tripadvisor', 'booking', 'airbnb', 'uber', 'lyft',
+    'doordash', 'grubhub', 'ubereats', 'postmates',
+    'google', 'bing', 'yahoo', 'duckduckgo', 'baidu',
+    'wikipedia', 'wikihow', 'quora', 'stackoverflow', 'github',
+    'gitlab', 'bitbucket', 'docker', 'kubernetes', 'aws', 'azure',
+    'gcp', 'heroku', 'netlify', 'vercel', 'wordpress', 'wix',
+    'squarespace', 'shopify', 'magento', 'woocommerce'
 ] 
+"""

@@ -3,14 +3,14 @@ from googleapiclient.discovery import build
 import time
 import random
 from urllib.parse import urlparse
-from config import GOOGLE_API_KEY, GOOGLE_CSE_ID, USER_AGENTS, FOUNDER_KEYWORDS, GEMINI_API_KEY, GEMINI_MODEL
+from config import GOOGLE_API_KEY, GOOGLE_CSE_ID, USER_AGENTS, FOUNDER_KEYWORDS, GEMINI_API_KEY, GEMINI_MODEL, SKIP_URL_WORDS
 import google.generativeai as genai
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 class BlogDiscovery:
-    def __init__(self):
+    def __init__(self, custom_skip_words=None):
         self.google_service = None
         if GOOGLE_API_KEY and GOOGLE_CSE_ID:
             try:
@@ -31,6 +31,43 @@ class BlogDiscovery:
         # Thread lock for LLM calls
         self.llm_lock = threading.Lock()
         self.llm_semaphore = threading.Semaphore(5)
+        
+        # Company info for URL filtering
+        self.company_name = None
+        self.company_url = None
+        self.skip_words = SKIP_URL_WORDS + (custom_skip_words or [])
+    
+    def set_company_info(self, company_name, company_url):
+        """Set company information for URL filtering"""
+        self.company_name = company_name
+        self.company_url = company_url
+    
+    def should_skip_url(self, url):
+        """Check if URL should be skipped based on skip words, but preserve if word is in company name or URL"""
+        if not self.company_name or not self.company_url:
+            return False
+        
+        url_lower = url.lower()
+        company_name_lower = self.company_name.lower()
+        company_url_lower = self.company_url.lower()
+        
+        for skip_word in self.skip_words:
+            skip_word_lower = skip_word.lower()
+            
+            # Check if skip word is in the URL
+            if skip_word_lower in url_lower:
+                # But don't skip if the word is part of the company name
+                if skip_word_lower in company_name_lower:
+                    continue
+                
+                # Or if the word is part of the company URL
+                if skip_word_lower in company_url_lower:
+                    continue
+                
+                # Skip this URL
+                return True
+        
+        return False
     
     def search_founder_blogs(self, company_name, founders):
         """Search for blogs written by company founders"""
@@ -68,6 +105,11 @@ class BlogDiscovery:
                         url = result.get('link', '')
                         title = result.get('title', '')
                         snippet = result.get('snippet', '')
+                        
+                        # Apply URL filtering
+                        if self.should_skip_url(url):
+                            print(f"Skipping founder blog URL due to filter: {url}")
+                            continue
                         
                         # Validate if this is likely a blog by the founder
                         if self._validate_founder_blog(url, title, snippet, founder, company_name):
@@ -121,6 +163,11 @@ class BlogDiscovery:
                     
                     # Skip if it's from the company's own domain
                     if self._is_company_domain(url, company_name):
+                        continue
+                    
+                    # Apply URL filtering
+                    if self.should_skip_url(url):
+                        print(f"Skipping external mention URL due to filter: {url}")
                         continue
                     
                     # Basic validation - if it passes, add to potential URLs

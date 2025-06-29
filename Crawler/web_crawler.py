@@ -5,14 +5,49 @@ import time
 import random
 from collections import deque
 import validators
-from config import USER_AGENTS, BLOG_KEYWORDS, MAX_PAGES_PER_DOMAIN, REQUEST_DELAY, TIMEOUT
+from config import USER_AGENTS, BLOG_KEYWORDS, MAX_PAGES_PER_DOMAIN, REQUEST_DELAY, TIMEOUT, SKIP_URL_WORDS
 
 class WebCrawler:
-    def __init__(self):
+    def __init__(self, custom_skip_words=None):
         self.visited_urls = set()
         self.found_urls = []
         self.blog_urls = []
+        self.company_name = None
+        self.company_url = None
+        self.skip_words = SKIP_URL_WORDS + (custom_skip_words or [])
         
+    def set_company_info(self, company_name, company_url):
+        """Set company information for URL filtering"""
+        self.company_name = company_name
+        self.company_url = company_url
+    
+    def should_skip_url(self, url):
+        """Check if URL should be skipped based on skip words, but preserve if word is in company name or URL"""
+        if not self.company_name or not self.company_url:
+            return False
+        
+        url_lower = url.lower()
+        company_name_lower = self.company_name.lower()
+        company_url_lower = self.company_url.lower()
+        
+        for skip_word in self.skip_words:
+            skip_word_lower = skip_word.lower()
+            
+            # Check if skip word is in the URL
+            if skip_word_lower in url_lower:
+                # But don't skip if the word is part of the company name
+                if skip_word_lower in company_name_lower:
+                    continue
+                
+                # Or if the word is part of the company URL
+                if skip_word_lower in company_url_lower:
+                    continue
+                
+                # Skip this URL
+                return True
+        
+        return False
+    
     def is_same_domain(self, url, base_url):
         """Check if URL belongs to the same domain as base URL"""
         try:
@@ -91,7 +126,11 @@ class WebCrawler:
                         absolute_url, _ = urldefrag(absolute_url)  # Remove fragments
                         
                         if self.is_valid_url(absolute_url):
-                            links.append(absolute_url)
+                            # Apply URL filtering
+                            if not self.should_skip_url(absolute_url):
+                                links.append(absolute_url)
+                            else:
+                                print(f"Skipping URL due to filter: {absolute_url}")
                 except (AttributeError, TypeError):
                     continue
             

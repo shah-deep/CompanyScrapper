@@ -14,7 +14,7 @@ from web_crawler import WebCrawler
 from blog_discovery import BlogDiscovery
 from founder_discovery import FounderDiscovery
 from url_aggregator import URLAggregator
-from config import GOOGLE_API_KEY, GEMINI_API_KEY
+from config import GOOGLE_API_KEY, GEMINI_API_KEY, SKIP_URL_WORDS
 
 def validate_url(url):
     """Validate if the provided URL is valid"""
@@ -23,6 +23,14 @@ def validate_url(url):
         return all([result.scheme, result.netloc])
     except:
         return False
+
+def get_skip_words(user_skip_words):
+    """Merge default skip words with user-provided ones"""
+    all_skip_words = list(SKIP_URL_WORDS)  # Copy default list
+    for word in user_skip_words:
+        if word.lower() not in [w.lower() for w in all_skip_words]:
+            all_skip_words.append(word.lower())
+    return all_skip_words
 
 def main():
     parser = argparse.ArgumentParser(
@@ -33,6 +41,7 @@ Examples:
   python main.py https://example.com
   python main.py https://startup.com --max-pages 100
   python main.py https://company.com --output my_company_urls.txt
+  python main.py https://company.com --skip-words reddit facebook twitter
         """
     )
     
@@ -50,6 +59,8 @@ Examples:
                        help='Generate simple URL list only')
     parser.add_argument('--json', action='store_true',
                        help='Generate JSON report')
+    parser.add_argument('--skip-words', nargs='+', default=[],
+                       help='Additional words to skip in URLs (e.g., --skip-words reddit facebook)')
     
     args = parser.parse_args()
     
@@ -75,11 +86,16 @@ Examples:
         args.skip_founder_blogs = True
         args.skip_founder_search = True
     
+    # Get merged skip words
+    all_skip_words = get_skip_words(args.skip_words)
+    if args.skip_words:
+        print(f"Using custom skip words: {', '.join(args.skip_words)}")
+    
     # Initialize components
     extractor = CompanyExtractor()
-    crawler = WebCrawler()
-    blog_discovery = BlogDiscovery()
-    founder_discovery = FounderDiscovery()
+    crawler = WebCrawler(custom_skip_words=args.skip_words)
+    blog_discovery = BlogDiscovery(custom_skip_words=args.skip_words)
+    founder_discovery = FounderDiscovery(custom_skip_words=args.skip_words)
     aggregator = URLAggregator()
     
     # Set company URL for filename generation
@@ -107,6 +123,10 @@ Examples:
         if not founders and not args.skip_founder_search:
             print("\n1.5. SEARCHING FOR FOUNDERS")
             print("-" * 40)
+            
+            # Set company info for URL filtering
+            founder_discovery.set_company_info(company_name, args.url)
+            
             discovered_founders = founder_discovery.search_founders(company_name, args.url)
             if discovered_founders:
                 founders = discovered_founders
@@ -118,10 +138,18 @@ Examples:
             print("\n1.5. SKIPPING FOUNDER SEARCH")
             print("-" * 40)
             print("Skipped by user request or API unavailable")
+        else:
+            print("\n1.5. SKIPPING FOUNDER SEARCH")
+            print("-" * 40)
+            print(f"Founders already found during company extraction: {', '.join(founders)}")
         
         # Step 2: Crawl company website
         print("\n2. CRAWLING COMPANY WEBSITE")
         print("-" * 40)
+        
+        # Set company info for URL filtering
+        crawler.set_company_info(company_name, args.url)
+        
         company_pages, blog_posts = crawler.crawl_company_site(args.url, args.max_pages)
         
         aggregator.add_company_pages(company_pages)
@@ -131,6 +159,10 @@ Examples:
         if not args.skip_founder_blogs and founders:
             print("\n3. SEARCHING FOR FOUNDER BLOGS")
             print("-" * 40)
+            
+            # Set company info for URL filtering
+            blog_discovery.set_company_info(company_name, args.url)
+            
             founder_blogs = blog_discovery.search_founder_blogs(company_name, founders)
             aggregator.add_founder_blogs(founder_blogs)
         else:
@@ -145,6 +177,11 @@ Examples:
         if not args.skip_external:
             print("\n4. SEARCHING FOR EXTERNAL MENTIONS")
             print("-" * 40)
+            
+            # Set company info for URL filtering (if not already set)
+            if not blog_discovery.company_name:
+                blog_discovery.set_company_info(company_name, args.url)
+            
             external_mentions, potential_urls = blog_discovery.search_company_mentions(company_name, company_info)
             aggregator.add_external_mentions(external_mentions)
             aggregator.add_potential_urls(potential_urls)
