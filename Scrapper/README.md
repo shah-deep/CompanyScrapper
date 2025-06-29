@@ -332,6 +332,74 @@ The application now supports advanced author extraction:
   - Social media profiles and author bios
 - **LLM Integration**: The AI processor is aware of multiple authors and ensures proper attribution in extracted knowledge
 
+### Enhanced Metadata Extraction
+
+The application now includes robust metadata extraction that handles missing or incomplete information:
+
+- **Title Extraction**: Automatically generates titles when missing or generic
+  - Extracts titles from content when not provided
+  - Generates descriptive titles for untitled content
+  - Preserves original titles when they are meaningful
+- **Robust Fallbacks**: Never fails completely due to missing metadata
+  - Uses original values when extraction fails
+  - Handles partial metadata gracefully
+  - Continues processing even with minimal metadata
+- **Content Type Detection**: Identifies content types from content analysis
+  - Tutorial, documentation, blog post, case study, etc.
+  - Falls back to original content type if detection fails
+- **Author Detection**: Enhanced author extraction with fallbacks
+  - Uses multiple detection methods
+  - Handles missing authors gracefully
+  - Preserves original author information when available
+
+### Metadata Extraction Examples
+
+```python
+# Original data with missing title
+{
+    'title': '',
+    'content': 'This guide covers Python async programming...',
+    'content_type': 'tutorial',
+    'author': 'John Doe'
+}
+
+# After metadata extraction
+{
+    'title': 'Python Async Programming Guide',  # Generated from content
+    'content_type': 'tutorial',                 # Preserved
+    'author': 'John Doe'                        # Preserved
+}
+
+# Original data with generic title
+{
+    'title': 'Untitled',
+    'content': 'Advanced machine learning techniques...',
+    'content_type': '',
+    'author': ''
+}
+
+# After metadata extraction
+{
+    'title': 'Advanced Machine Learning Techniques',  # Generated from content
+    'content_type': 'tutorial',                      # Detected from content
+    'author': ''                                     # Could not detect
+}
+```
+
+### Testing Metadata Extraction
+
+Test the improved metadata extraction functionality:
+
+```bash
+python test_metadata_extraction.py
+```
+
+This will:
+- Test various metadata scenarios (missing title, author, content type)
+- Verify robust fallback behavior
+- Show extraction improvements
+- Validate error handling
+
 ## API Integration
 
 ### Gemini AI

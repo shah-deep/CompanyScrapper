@@ -61,10 +61,11 @@ class LLMProcessor:
             
             # Extract metadata from first chunk
             metadata_result = await self._extract_metadata_only(first_chunk_data, first_markdown)
-            if not metadata_result:
-                self.logger.warning("Failed to extract metadata from first chunk")
+            if metadata_result:
+                title, content_type, author = metadata_result
+                self.logger.info(f"Metadata result: {metadata_result}")
             else:
-                content_type, author = metadata_result
+                self.logger.warning("Failed to extract metadata from first chunk, using original values")
             
             # Process all chunks for content extraction
             chunk_results = []
@@ -74,6 +75,7 @@ class LLMProcessor:
                 chunk_data = {
                     **content_data,
                     'content': chunk,
+                    'title': title,  # Use consistent title
                     'content_type': content_type,  # Use consistent content_type
                     'author': author  # Use consistent author
                 }
@@ -156,62 +158,70 @@ class LLMProcessor:
         
         return chunks
     
-    async def _extract_metadata_only(self, content_data: Dict[str, Any], markdown_content: str) -> Optional[Tuple[str, str]]:
-        """Extract only metadata (content_type, author) from the first chunk."""
+    async def _extract_metadata_only(self, content_data: Dict[str, Any], markdown_content: str) -> Optional[Tuple[str, str, str]]:
+        """Extract metadata (title, content_type, author) from the first chunk."""
         try:
             title = content_data.get('title', '')
             content_type = content_data.get('content_type', '')
             author = content_data.get('author', '')
-            url = content_data.get('url', '')
             
             prompt = f"""
-            Analyze the following content and extract ONLY the metadata:
+            Analyze the following content and extract metadata. Extract what you can find, even if some information is missing:
 
+            - Extract or generate a title if not provided
             - Identify the content type (tutorial, documentation, blog post, case study, etc.)
             - Find author information if not already provided
 
             Content Information:
-            - Title: {title}
+            - Current Title: {title}
             - Current Content Type: {content_type}
             - Current Authors: {author}
-            - URL: {url}
 
             Content (Markdown):
             {markdown_content}
 
-            "content_type|author"
+            Respond in this format: "title|content_type|author"
             
             Where:
-            - content_type: the identified content type
-            - author: the found authors (single author or comma separated list string or original or empty string)
+            - title: extracted or generated title (find & use original if good, generate if missing/generic)
+            - content_type: the identified content type (use original if given)
+            - author: the found authors (use original if given, or empty string if not found)
+            
+            IMPORTANT: If any field cannot be determined, use the original value or empty string. Do not fail completely.
             """
             
             response = self.model.generate_content(prompt)
             
             if not response.text:
-                return None
+                # Return original values if LLM fails
+                return title, content_type, author
             
             response_text = response.text.strip()
             
-           
             try:
                 parts = response_text.split("|", 2)
                 if len(parts) == 3:
-                    _, extracted_content_type, extracted_author = parts
+                    extracted_title, extracted_content_type, extracted_author = parts
                     
-                    # Use extracted values if they're more specific than original
-                    final_content_type = extracted_content_type if extracted_content_type and extracted_content_type != 'blog' else content_type
-                    final_author = extracted_author if extracted_author and extracted_author != 'Unknown' else author
+                    # Use extracted values if they're meaningful, otherwise fall back to originals
+                    final_title = extracted_title if extracted_title and extracted_title.strip() and extracted_title.lower() not in ['unknown', 'untitled', 'no title'] else title
+                    final_content_type = extracted_content_type if extracted_content_type and extracted_content_type.strip() and extracted_content_type.lower() != 'unknown' else content_type
+                    final_author = extracted_author if extracted_author and extracted_author.strip() and extracted_author.lower() != 'unknown' else author
                     
-                    return final_content_type, final_author
+                    return final_title, final_content_type, final_author
+                else:
+                    # If parsing fails, return original values
+                    self.logger.warning(f"Unexpected metadata response format: {response_text}")
+                    return title, content_type, author
             except Exception as e:
                 self.logger.error(f"Error parsing metadata response: {e}")
-            
-            return None
+                # Return original values if parsing fails
+                return title, content_type, author
             
         except Exception as e:
             self.logger.error(f"Error extracting metadata: {e}")
-            return None
+            # Return original values if extraction fails completely
+            return content_data.get('title', ''), content_data.get('content_type', ''), content_data.get('author', '')
     
     async def _extract_structured_content_only(self, content_data: Dict[str, Any], markdown_content: str) -> Optional[str]:
         """Extract only structured content from a chunk."""
@@ -332,6 +342,7 @@ class LLMProcessor:
                - If it's technical content, proceed to step 2
 
             2. If technical, extract and enhance metadata:
+               - Extract or generate a title if not provided or if the current title is generic
                - Identify the content type (tutorial, documentation, blog post, case study, etc.)
                - Find author information if not already provided
                - Look for any technical expertise indicators
@@ -344,7 +355,7 @@ class LLMProcessor:
                - Practical tips and recommendations
 
             Content Information:
-            - Title: {title}
+            - Current Title: {title}
             - Current Content Type: {content_type}
             - Current Author: {author}
             - URL: {url}
@@ -355,12 +366,15 @@ class LLMProcessor:
             Please respond in this exact format:
             If NOT technical: "NOT_TECHNICAL"
             If technical: 
-            "TECHNICAL|content_type|author|extracted_knowledge_markdown"
+            "TECHNICAL|title|content_type|author|extracted_knowledge_markdown"
             
             Where:
-            - content_type: the identified content type
-            - author: the found authors (single author or comma separated list string or original or empty string)
+            - title: extracted or generated title (find & use original if good, generate if missing/generic)
+            - content_type: the identified content type (use original if given)
+            - author: the found authors (use original if given, or empty string)
             - extracted_knowledge_markdown: the structured technical knowledge
+            
+            IMPORTANT: If any metadata field cannot be determined, use the original value or empty string. Do not fail completely.
             """
             
             response = self.model.generate_content(prompt)
@@ -378,11 +392,12 @@ class LLMProcessor:
             # Parse technical response
             if response_text.startswith("TECHNICAL|"):
                 try:
-                    parts = response_text.split("|", 3)
-                    if len(parts) == 4:
-                        _, extracted_content_type, extracted_author, structured_content = parts
+                    parts = response_text.split("|", 4)
+                    if len(parts) == 5:
+                        _, extracted_title, extracted_content_type, extracted_author, structured_content = parts
                         
                         # Use extracted values if they're more specific than original
+                        final_title = extracted_title if extracted_title and extracted_title.strip() and extracted_title.lower() not in ['unknown', 'untitled', 'no title'] else title
                         final_content_type = extracted_content_type if extracted_content_type and extracted_content_type != 'blog' else content_type
                         final_author = extracted_author if extracted_author and extracted_author != 'Unknown' else author
                         
@@ -394,7 +409,7 @@ class LLMProcessor:
                             "team_id": team_id,
                             "items": [
                                 {
-                                    "title": title,
+                                    "title": final_title,
                                     "content": cleaned_content,
                                     "full_content": cleaned_fullcontent,
                                     "content_type": final_content_type,
@@ -407,11 +422,25 @@ class LLMProcessor:
                     self.logger.error(f"Error parsing LLM response: {e}")
             
             # Fallback: use original content if parsing fails
+            # Try to extract a basic title from content if none exists
+            fallback_title = title
+            if not fallback_title or len(fallback_title.strip()) < 3:
+                # Try to extract title from first few lines of content
+                content_lines = markdown_content.split('\n')
+                for line in content_lines[:5]:  # Check first 5 lines
+                    line = line.strip()
+                    if line and len(line) > 5 and len(line) < 100:
+                        # Remove markdown formatting
+                        clean_line = re.sub(r'^#+\s*', '', line)
+                        if clean_line and not clean_line.startswith('```'):
+                            fallback_title = clean_line
+                            break
+            
             return {
                 "team_id": team_id,
                 "items": [
                     {
-                        "title": title,
+                        "title": fallback_title,
                         "content": markdown_content,
                         "content_type": content_type,
                         "source_url": url,
@@ -477,14 +506,14 @@ class LLMProcessor:
             # If title is missing but content is substantial, check for any technical indicators
             if not title or len(title) < 5:
                 # Look for any technical indicators in the first 2000 characters
-                sample_content = content[:2000].lower()
+                sample_content = content[:5000].lower()
                 technical_indicators = [
                     'chapter', 'section', 'problem', 'solution', 'example', 'implementation',
                     'design', 'pattern', 'structure', 'model', 'approach', 'methodology',
                     'practice', 'principle', 'concept', 'theory', 'framework', 'architecture'
                 ]
                 has_indicators = any(indicator in sample_content for indicator in technical_indicators)
-                if has_indicators and len(content) > 2000:
+                if has_indicators and len(content) > 1000:
                     return True
             
             return False
