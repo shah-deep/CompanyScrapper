@@ -82,6 +82,9 @@ Examples:
     founder_discovery = FounderDiscovery()
     aggregator = URLAggregator()
     
+    # Set company URL for filename generation
+    aggregator.set_company_url(args.url)
+    
     try:
         # Step 1: Extract company information
         print("\n1. EXTRACTING COMPANY INFORMATION")

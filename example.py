@@ -27,6 +27,9 @@ def example_usage():
     founder_discovery = FounderDiscovery()
     aggregator = URLAggregator()
     
+    # Set company URL for filename generation
+    aggregator.set_company_url(company_url)
+    
     try:
         # Step 1: Extract company information
         print(f"\n1. Extracting company info from: {company_url}")

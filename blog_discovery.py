@@ -131,7 +131,7 @@ class BlogDiscovery:
                 
             results = []
             for i in range(0, min(max_results, 10), 10):
-                search_results = self.google_service.list(
+                search_results = self.google_service.cse().list(
                     q=query,
                     cx=GOOGLE_CSE_ID,
                     start=i + 1

@@ -90,11 +90,27 @@ class CompanyExtractor:
             """
             
             response = self.model.generate_content(prompt)  # type: ignore
-            company_info = json.loads(response.text)
+            response_text = response.text.strip()
+            
+            # Check if response is empty or invalid
+            if not response_text or response_text == "":
+                print("LLM returned empty response, using basic extraction")
+                return self._basic_extraction(page_data)
+            
+            # Extract JSON from markdown code blocks if present
+            if response_text.startswith("```json"):
+                response_text = response_text.replace("```json", "").replace("```", "").strip()
+            elif response_text.startswith("```"):
+                response_text = response_text.replace("```", "").strip()
+            
+            company_info = json.loads(response_text)
             company_info['source_url'] = url
             
             return company_info
             
+        except (json.JSONDecodeError, ValueError, AttributeError) as e:
+            print(f"Error parsing LLM response: {str(e)}")
+            return self._basic_extraction(page_data)
         except Exception as e:
             print(f"Error extracting company info with LLM: {str(e)}")
             return self._basic_extraction(page_data)

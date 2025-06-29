@@ -10,6 +10,11 @@ class URLAggregator:
             'founder_blogs': [],
             'external_mentions': []
         }
+        self.company_url = None
+    
+    def set_company_url(self, url):
+        """Set the company homepage URL for filename generation"""
+        self.company_url = url
     
     def add_company_pages(self, pages):
         """Add company website pages"""
@@ -95,15 +100,23 @@ class URLAggregator:
     def generate_simple_url_list(self, company_name, output_file=None):
         """Generate a simple list of just URLs"""
         if output_file is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = f"{company_name.replace(' ', '_')}_simple_urls_{timestamp}.txt"
+            # Use company homepage URL without http/https as filename
+            from urllib.parse import urlparse
+            try:
+                if self.company_url:
+                    parsed_url = urlparse(self.company_url)
+                    domain = parsed_url.netloc
+                    output_file = f"{domain}.txt"
+                else:
+                    # Fallback to company name if no URL set
+                    output_file = f"{company_name.replace(' ', '_')}.txt"
+            except:
+                # Fallback to company name if parsing fails
+                output_file = f"{company_name.replace(' ', '_')}.txt"
         
         print(f"Generating simple URL list: {output_file}")
         
         with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(f"# URLs for {company_name}\n")
-            f.write(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            
             # All URLs in one list
             all_urls = []
             all_urls.extend([page['url'] for page in self.all_urls['company_pages']])
