@@ -148,7 +148,7 @@ class KnowledgeScraper:
                 self.stats['errors'].append(f"Error processing {url}: {str(e)}")
                 self.logger.error(f"Error processing {url}: {e}")
     
-    async def get_team_knowledge(self) -> Dict[str, Any]:
+    async def get_team_knowledge(self) -> Dict[str, Any] | None:
         """Retrieve all knowledge for the team."""
         return await self.db_handler.get_team_knowledge(self.team_id)
     

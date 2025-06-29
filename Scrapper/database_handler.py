@@ -48,7 +48,7 @@ class DatabaseHandler:
     async def save_knowledge_item(self, knowledge_data: Dict[str, Any]) -> bool:
         """Save a knowledge item to the database."""
         try:
-            if not self.collection:
+            if self.collection is None:
                 raise Exception("Database not connected")
             
             team_id = knowledge_data.get('team_id')
@@ -123,7 +123,7 @@ class DatabaseHandler:
     async def get_team_knowledge(self, team_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve all knowledge items for a team."""
         try:
-            if not self.collection:
+            if self.collection is None:
                 raise Exception("Database not connected")
             
             team_document = self.collection.find_one({"team_id": team_id})
@@ -136,7 +136,7 @@ class DatabaseHandler:
     async def search_knowledge(self, team_id: str, query: str) -> List[Dict[str, Any]]:
         """Search knowledge items within a team."""
         try:
-            if not self.collection:
+            if self.collection is None:
                 raise Exception("Database not connected")
             
             # Create text search index if it doesn't exist
@@ -174,7 +174,7 @@ class DatabaseHandler:
     async def delete_team_knowledge(self, team_id: str) -> bool:
         """Delete all knowledge items for a team."""
         try:
-            if not self.collection:
+            if self.collection is None:
                 raise Exception("Database not connected")
             
             result = self.collection.delete_one({"team_id": team_id})
@@ -193,7 +193,7 @@ class DatabaseHandler:
     async def get_statistics(self) -> Dict[str, Any]:
         """Get database statistics."""
         try:
-            if not self.collection:
+            if self.collection is None:
                 raise Exception("Database not connected")
             
             total_teams = self.collection.count_documents({})

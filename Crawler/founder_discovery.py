@@ -23,7 +23,7 @@ class FounderDiscovery:
         if GEMINI_API_KEY:
             try:
                 genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
-                self.llm = genai.GenerativeModel('gemini-2.0-flash-lite')  # type: ignore
+                self.llm = genai.GenerativeModel(Config.GEMINI_MODEL)  # type: ignore
             except Exception as e:
                 print(f"Error initializing LLM: {str(e)}")
                 self.llm = None

@@ -1,8 +1,7 @@
 import logging
 from typing import Dict, Any, Optional
-import google.generativeai as genai
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage, SystemMessage
+from google.generativeai.generative_models import GenerativeModel
+from google.generativeai.client import configure
 import json
 import re
 
@@ -16,15 +15,8 @@ class LLMProcessor:
         if not Config.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is required in environment variables")
         
-        genai.configure(api_key=Config.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel(Config.GEMINI_MODEL)
-        
-        # Initialize LangChain model
-        self.llm = ChatGoogleGenerativeAI(
-            model=Config.GEMINI_MODEL,
-            google_api_key=Config.GEMINI_API_KEY,
-            temperature=0.1
-        )
+        configure(api_key=Config.GEMINI_API_KEY)
+        self.model = GenerativeModel(Config.GEMINI_MODEL)
     
     async def process_content(self, content_data: Dict[str, Any], team_id: str, user_id: str = "") -> Optional[Dict[str, Any]]:
         """Process content through LLM to extract structured knowledge."""

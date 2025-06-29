@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 from urllib.parse import urljoin, urlparse
 import json
-from config import GEMINI_API_KEY, USER_AGENTS
+from config import GEMINI_API_KEY, USER_AGENTS, GEMINI_MODEL
 import random
 import time
 
@@ -11,7 +11,7 @@ class CompanyExtractor:
     def __init__(self):
         if GEMINI_API_KEY:
             genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
-            self.model = genai.GenerativeModel('gemini-2.0-flash-lite')  # type: ignore
+            self.model = genai.GenerativeModel(GEMINI_MODEL)  # type: ignore
         else:
             self.model = None
     

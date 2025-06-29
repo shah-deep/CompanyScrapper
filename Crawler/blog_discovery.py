@@ -3,7 +3,7 @@ from googleapiclient.discovery import build
 import time
 import random
 from urllib.parse import urlparse
-from config import GOOGLE_API_KEY, GOOGLE_CSE_ID, USER_AGENTS, FOUNDER_KEYWORDS, GEMINI_API_KEY
+from config import GOOGLE_API_KEY, GOOGLE_CSE_ID, USER_AGENTS, FOUNDER_KEYWORDS, GEMINI_API_KEY, GEMINI_MODEL
 import google.generativeai as genai
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -23,7 +23,7 @@ class BlogDiscovery:
         if GEMINI_API_KEY:
             try:
                 genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
-                self.llm = genai.GenerativeModel('gemini-2.0-flash-lite')  # type: ignore
+                self.llm = genai.GenerativeModel(GEMINI_MODEL)  # type: ignore
             except Exception as e:
                 print(f"Error initializing LLM for URL validation: {str(e)}")
                 self.llm = None
