@@ -145,8 +145,9 @@ Examples:
         if not args.skip_external:
             print("\n4. SEARCHING FOR EXTERNAL MENTIONS")
             print("-" * 40)
-            external_mentions = blog_discovery.search_company_mentions(company_name)
+            external_mentions, potential_urls = blog_discovery.search_company_mentions(company_name)
             aggregator.add_external_mentions(external_mentions)
+            aggregator.add_potential_urls(potential_urls)
         else:
             print("\n4. SKIPPING EXTERNAL MENTIONS SEARCH")
             print("-" * 40)

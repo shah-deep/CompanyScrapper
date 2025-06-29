@@ -9,9 +9,26 @@ class URLAggregator:
             'company_pages': [],
             'blog_posts': [],
             'founder_blogs': [],
-            'external_mentions': []
+            'external_mentions': [],
+            'potential_urls': []
         }
         self.company_url = None
+    
+    def _get_output_directory(self):
+        """Get the output directory for saving files"""
+        # Get the project root directory (two levels up from Crawler)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        output_dir = os.path.join(project_root, 'data', 'scrapped_urls')
+        
+        # Create directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        return output_dir
+    
+    def _get_output_path(self, filename):
+        """Get the full path for an output file"""
+        output_dir = self._get_output_directory()
+        return os.path.join(output_dir, filename)
     
     def set_company_url(self, url):
         """Set the company homepage URL for filename generation"""
@@ -33,11 +50,19 @@ class URLAggregator:
         """Add external mentions of the company"""
         self.all_urls['external_mentions'].extend(mentions)
     
+    def add_potential_urls(self, potential_urls):
+        """Add potential URLs that didn't pass LLM validation"""
+        self.all_urls['potential_urls'].extend(potential_urls)
+    
     def generate_url_list(self, company_name, output_file=None):
         """Generate a comprehensive URL list file"""
         if output_file is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = f"{company_name.replace(' ', '_')}_urls_{timestamp}.txt"
+            filename = f"{company_name.replace(' ', '_')}_urls_{timestamp}.txt"
+            output_file = self._get_output_path(filename)
+        else:
+            # If a custom filename is provided, still save in the output directory
+            output_file = self._get_output_path(output_file)
         
         print(f"Generating URL list: {output_file}")
         
@@ -85,6 +110,15 @@ class URLAggregator:
                     f.write(f"Title: {mention['title']}\n")
                 f.write("\n")
             
+            # Potential URLs
+            f.write("\n5. POTENTIAL URLS (LLM Rejected)\n")
+            f.write("-" * 40 + "\n")
+            for potential in self.all_urls['potential_urls']:
+                f.write(f"URL: {potential['url']}\n")
+                if potential.get('title'):
+                    f.write(f"Title: {potential['title']}\n")
+                f.write("\n")
+            
             # Summary
             f.write("\n" + "=" * 80 + "\n")
             f.write("SUMMARY\n")
@@ -93,6 +127,7 @@ class URLAggregator:
             f.write(f"Total Blog Posts: {len(self.all_urls['blog_posts'])}\n")
             f.write(f"Total Founder Blogs: {len(self.all_urls['founder_blogs'])}\n")
             f.write(f"Total External Mentions: {len(self.all_urls['external_mentions'])}\n")
+            f.write(f"Total Potential URLs: {len(self.all_urls['potential_urls'])}\n")
             f.write(f"GRAND TOTAL: {self.get_total_urls()}\n")
         
         print(f"URL list saved to: {output_file}")
@@ -106,11 +141,15 @@ class URLAggregator:
                 if self.company_url:
                     parsed_url = urlparse(self.company_url)
                     domain = parsed_url.netloc
-                    output_file = f"{domain}.txt"
+                    filename = f"{domain}.txt"
                 else:
-                    output_file = f"{company_name.replace(' ', '_')}.txt"
+                    filename = f"{company_name.replace(' ', '_')}.txt"
             except:
-                output_file = f"{company_name.replace(' ', '_')}.txt"
+                filename = f"{company_name.replace(' ', '_')}.txt"
+        else:
+            filename = output_file
+        
+        output_file = self._get_output_path(filename)
 
         print(f"Generating simple URL list: {output_file}")
 
@@ -120,6 +159,7 @@ class URLAggregator:
         all_urls.extend([blog['url'] for blog in self.all_urls['blog_posts']])
         all_urls.extend([blog['url'] for blog in self.all_urls['founder_blogs']])
         all_urls.extend([mention['url'] for mention in self.all_urls['external_mentions']])
+        all_urls.extend([potential['url'] for potential in self.all_urls['potential_urls']])
 
         # Remove duplicates while preserving order
         seen = set()
@@ -153,7 +193,11 @@ class URLAggregator:
         """Generate a JSON report with all data"""
         if output_file is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = f"{company_name.replace(' ', '_')}_report_{timestamp}.json"
+            filename = f"{company_name.replace(' ', '_')}_report_{timestamp}.json"
+            output_file = self._get_output_path(filename)
+        else:
+            # If a custom filename is provided, still save in the output directory
+            output_file = self._get_output_path(output_file)
         
         report = {
             'company_name': company_name,
@@ -163,6 +207,7 @@ class URLAggregator:
                 'blog_posts': len(self.all_urls['blog_posts']),
                 'founder_blogs': len(self.all_urls['founder_blogs']),
                 'external_mentions': len(self.all_urls['external_mentions']),
+                'potential_urls': len(self.all_urls['potential_urls']),
                 'total_urls': self.get_total_urls()
             },
             'urls': self.all_urls
@@ -181,6 +226,7 @@ class URLAggregator:
         all_urls.extend([blog['url'] for blog in self.all_urls['blog_posts']])
         all_urls.extend([blog['url'] for blog in self.all_urls['founder_blogs']])
         all_urls.extend([mention['url'] for mention in self.all_urls['external_mentions']])
+        all_urls.extend([potential['url'] for potential in self.all_urls['potential_urls']])
         
         return len(set(all_urls))
     
@@ -193,5 +239,6 @@ class URLAggregator:
         print(f"Blog Posts: {len(self.all_urls['blog_posts'])}")
         print(f"Founder Blogs: {len(self.all_urls['founder_blogs'])}")
         print(f"External Mentions: {len(self.all_urls['external_mentions'])}")
+        print(f"Potential URLs: {len(self.all_urls['potential_urls'])}")
         print(f"Total Unique URLs: {self.get_total_urls()}")
         print("=" * 60) 
