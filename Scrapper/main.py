@@ -19,16 +19,18 @@ from database_handler import DatabaseHandler
 from config import Config
 
 class KnowledgeScraper:
-    def __init__(self, team_id: str, user_id: str = "", processing_mode: str = "multiprocessing"):
+    def __init__(self, team_id: str, user_id: str = "", processing_mode: str = "multiprocessing", skip_existing_urls: bool = False):
         self.team_id = team_id
         self.user_id = user_id
         self.processing_mode = processing_mode.lower()  # "multiprocessing" or "async"
+        self.skip_existing_urls = skip_existing_urls  # New parameter to skip URLs already in DB
         self.logger = logging.getLogger(__name__)
         
         # Statistics
         self.stats = {
             'urls_processed': 0,
             'urls_failed': 0,
+            'urls_skipped': 0,  # New stat for skipped URLs
             'subpages_discovered': 0,
             'content_extracted': 0,
             'knowledge_items_saved': 0,
@@ -40,6 +42,9 @@ class KnowledgeScraper:
         # Track original URLs and discovered URLs
         self.original_urls: Set[str] = set()
         self.all_discovered_urls: Set[str] = set()
+        
+        # Cache for existing URLs from database
+        self.existing_urls_from_db: Set[str] = set()
         
         # Process pool for parallel processing (only for multiprocessing mode)
         self.process_pool = None
@@ -73,6 +78,9 @@ class KnowledgeScraper:
             await self.url_processor.__aenter__()
             await self.content_extractor.__aenter__()
             await self.db_handler.connect()
+            
+            # Load existing URLs from database if skip_existing_urls is enabled
+            await self._load_existing_urls_from_db()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -146,6 +154,76 @@ class KnowledgeScraper:
             self.logger.info(f"Removed {len(urls)} URLs from subpage file {file_path}")
         except Exception as e:
             self.logger.error(f"Error removing URLs from subpage file {file_path}: {e}")
+    
+    async def _load_existing_urls_from_db(self):
+        """Load existing URLs from database for the team to avoid reprocessing."""
+        if not self.skip_existing_urls:
+            return
+        
+        try:
+            if self.processing_mode == "async":
+                if not self.db_handler:
+                    self.logger.warning("Database handler not initialized for async mode")
+                    return
+                
+                team_data = await self.db_handler.get_team_knowledge(self.team_id)
+                if team_data and 'items' in team_data:
+                    existing_urls = {item.get('source_url', '') for item in team_data['items'] if item.get('source_url')}
+                    self.existing_urls_from_db = existing_urls
+                    self.logger.info(f"Loaded {len(existing_urls)} existing URLs from database for team {self.team_id}")
+                else:
+                    self.logger.info(f"No existing data found for team {self.team_id}")
+            else:
+                # For multiprocessing mode, we'll load this in the worker function
+                pass
+                
+        except Exception as e:
+            self.logger.error(f"Error loading existing URLs from database: {e}")
+    
+    def _load_existing_urls_from_db_sync(self):
+        """Synchronous version of loading existing URLs from database."""
+        if not self.skip_existing_urls:
+            return
+        
+        try:
+            # Create a temporary database handler for this process
+            temp_handler = DatabaseHandler()
+            
+            # Create a new event loop for this thread/process
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            try:
+                # Connect and get team data
+                loop.run_until_complete(temp_handler.connect())
+                team_data = loop.run_until_complete(temp_handler.get_team_knowledge(self.team_id))
+                
+                if team_data and 'items' in team_data:
+                    existing_urls = {item.get('source_url', '') for item in team_data['items'] if item.get('source_url')}
+                    self.existing_urls_from_db = existing_urls
+                    self.logger.info(f"Loaded {len(existing_urls)} existing URLs from database for team {self.team_id}")
+                else:
+                    self.logger.info(f"No existing data found for team {self.team_id}")
+                
+                # Clean up
+                loop.run_until_complete(temp_handler.disconnect())
+                
+            finally:
+                if loop.is_running():
+                    loop.close()
+                    
+        except Exception as e:
+            self.logger.error(f"Error loading existing URLs from database: {e}")
+    
+    def _should_skip_url(self, url: str) -> bool:
+        """Check if URL should be skipped because it already exists in database."""
+        if not self.skip_existing_urls:
+            return False
+        
+        return url in self.existing_urls_from_db
     
     def process_url_file_iterative(self, file_path: str) -> Dict[str, Any]:
         """Process URLs from a file with iterative subpage discovery using multiprocessing."""
@@ -353,7 +431,7 @@ class KnowledgeScraper:
         for url in urls:
             future = self.process_pool.submit(
                 process_single_url_worker,
-                url, self.team_id, self.user_id
+                url, self.team_id, self.user_id, self.skip_existing_urls
             )
             future_to_url[future] = url
         
@@ -364,17 +442,21 @@ class KnowledgeScraper:
                 result = future.result()
                 if result:
                     # Update statistics
-                    self.stats['urls_processed'] += 1
-                    if result.get('subpages'):
-                        iteration_discovered_urls.update(result['subpages'])
-                        self.stats['subpages_discovered'] += len(result['subpages'])
-                    if result.get('content_extracted'):
-                        self.stats['content_extracted'] += 1
-                    if result.get('knowledge_saved'):
-                        self.stats['knowledge_items_saved'] += 1
-                    if result.get('error'):
-                        self.stats['urls_failed'] += 1
-                        self.stats['errors'].append(f"Error processing {url}: {result['error']}")
+                    if result.get('skipped'):
+                        self.stats['urls_skipped'] += 1
+                        self.logger.info(f"Skipped URL (already in database): {url}")
+                    else:
+                        self.stats['urls_processed'] += 1
+                        if result.get('subpages'):
+                            iteration_discovered_urls.update(result['subpages'])
+                            self.stats['subpages_discovered'] += len(result['subpages'])
+                        if result.get('content_extracted'):
+                            self.stats['content_extracted'] += 1
+                        if result.get('knowledge_saved'):
+                            self.stats['knowledge_items_saved'] += 1
+                        if result.get('error'):
+                            self.stats['urls_failed'] += 1
+                            self.stats['errors'].append(f"Error processing {url}: {result['error']}")
                 else:
                     self.stats['urls_failed'] += 1
             except Exception as e:
@@ -416,6 +498,12 @@ class KnowledgeScraper:
         """Process a single URL in async mode."""
         async with semaphore:
             try:
+                # Check if URL should be skipped (already exists in database)
+                if self._should_skip_url(url):
+                    self.stats['urls_skipped'] += 1
+                    self.logger.info(f"Skipping URL (already in database): {url}")
+                    return
+                
                 self.logger.info(f"Processing URL: {url}")
                 
                 # Step 1: Discover subpages
@@ -579,7 +667,7 @@ class KnowledgeScraper:
         for url in urls:
             future = self.process_pool.submit(
                 process_single_url_worker,
-                url, self.team_id, self.user_id
+                url, self.team_id, self.user_id, self.skip_existing_urls
             )
             future_to_url[future] = url
         
@@ -590,17 +678,21 @@ class KnowledgeScraper:
                 result = future.result()
                 if result:
                     # Update statistics
-                    self.stats['urls_processed'] += 1
-                    if result.get('subpages'):
-                        self.all_discovered_urls.update(result['subpages'])
-                        self.stats['subpages_discovered'] += len(result['subpages'])
-                    if result.get('content_extracted'):
-                        self.stats['content_extracted'] += 1
-                    if result.get('knowledge_saved'):
-                        self.stats['knowledge_items_saved'] += 1
-                    if result.get('error'):
-                        self.stats['urls_failed'] += 1
-                        self.stats['errors'].append(f"Error processing {url}: {result['error']}")
+                    if result.get('skipped'):
+                        self.stats['urls_skipped'] += 1
+                        self.logger.info(f"Skipped URL (already in database): {url}")
+                    else:
+                        self.stats['urls_processed'] += 1
+                        if result.get('subpages'):
+                            self.all_discovered_urls.update(result['subpages'])
+                            self.stats['subpages_discovered'] += len(result['subpages'])
+                        if result.get('content_extracted'):
+                            self.stats['content_extracted'] += 1
+                        if result.get('knowledge_saved'):
+                            self.stats['knowledge_items_saved'] += 1
+                        if result.get('error'):
+                            self.stats['urls_failed'] += 1
+                            self.stats['errors'].append(f"Error processing {url}: {result['error']}")
                 else:
                     self.stats['urls_failed'] += 1
             except Exception as e:
@@ -608,7 +700,7 @@ class KnowledgeScraper:
                 self.stats['errors'].append(f"Error processing {url}: {str(e)}")
                 self.logger.error(f"Error processing {url}: {e}")
 
-def process_single_url_worker(url: str, team_id: str, user_id: str) -> Dict[str, Any]:
+def process_single_url_worker(url: str, team_id: str, user_id: str, skip_existing_urls: bool = False) -> Dict[str, Any]:
     """Worker function to process a single URL in a separate process."""
     try:
         # Initialize components for this process
@@ -622,8 +714,42 @@ def process_single_url_worker(url: str, team_id: str, user_id: str) -> Dict[str,
             'subpages': [],
             'content_extracted': False,
             'knowledge_saved': False,
+            'skipped': False,
             'error': None
         }
+        
+        # Check if URL should be skipped (already exists in database)
+        if skip_existing_urls:
+            try:
+                # Create a new event loop for this thread/process
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                try:
+                    # Connect and check if URL exists
+                    loop.run_until_complete(db_handler.connect())
+                    team_data = loop.run_until_complete(db_handler.get_team_knowledge(team_id))
+                    
+                    if team_data and 'items' in team_data:
+                        existing_urls = {item.get('source_url', '') for item in team_data['items'] if item.get('source_url')}
+                        if url in existing_urls:
+                            result['skipped'] = True
+                            result['error'] = "URL already exists in database"
+                            return result
+                    
+                    # Clean up
+                    loop.run_until_complete(db_handler.disconnect())
+                    
+                finally:
+                    if loop.is_running():
+                        loop.close()
+                        
+            except Exception as e:
+                # If we can't check the database, continue processing
+                pass
         
         # Step 1: Discover subpages
         subpages = url_processor.discover_subpages_sync(url)
@@ -667,6 +793,7 @@ def process_single_url_worker(url: str, team_id: str, user_id: str) -> Dict[str,
             'subpages': [],
             'content_extracted': False,
             'knowledge_saved': False,
+            'skipped': False,
             'error': str(e)
         }
 
@@ -691,6 +818,7 @@ def main():
     parser.add_argument('--iterative', action='store_true', help='Use iterative subpage discovery')
     parser.add_argument('--processing-mode', choices=['multiprocessing', 'async'], default='multiprocessing', 
                        help='Processing mode: multiprocessing (default) or async')
+    parser.add_argument('--skip-existing', action='store_true', help='Skip URLs that already exist in database')
     parser.add_argument('--search', help='Search existing knowledge')
     parser.add_argument('--stats', action='store_true', help='Show database statistics')
     
@@ -704,7 +832,7 @@ def main():
         if args.processing_mode == "async":
             # Use async context manager
             async def run_async():
-                async with KnowledgeScraper(args.team_id, args.user_id, args.processing_mode) as scraper:
+                async with KnowledgeScraper(args.team_id, args.user_id, args.processing_mode, args.skip_existing) as scraper:
                     if args.search:
                         # Search existing knowledge
                         results = scraper.search_knowledge(args.search)
@@ -752,7 +880,7 @@ def main():
             
         else:
             # Use multiprocessing context manager
-            with KnowledgeScraper(args.team_id, args.user_id, args.processing_mode) as scraper:
+            with KnowledgeScraper(args.team_id, args.user_id, args.processing_mode, args.skip_existing) as scraper:
                 if args.search:
                     # Search existing knowledge
                     results = scraper.search_knowledge(args.search)

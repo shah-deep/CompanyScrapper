@@ -48,7 +48,8 @@ def scrape_company_knowledge(
     user_id: str = "",
     processing_mode: str = "multiprocessing",
     save_discovered_urls: bool = True,
-    iterative: bool = False
+    iterative: bool = False,
+    skip_existing_urls: bool = False
 ) -> Dict[str, Any]:
     """
     Scrape knowledge from a company's URL file
@@ -60,6 +61,7 @@ def scrape_company_knowledge(
         processing_mode: Processing mode ("multiprocessing" or "async")
         save_discovered_urls: Whether to save discovered URLs back to file
         iterative: Whether to use iterative subpage discovery
+        skip_existing_urls: Whether to skip URLs that already exist in database
         
     Returns:
         Dictionary containing processing results and statistics
@@ -76,7 +78,7 @@ def scrape_company_knowledge(
     
     try:
         # Initialize the scraper
-        scraper = KnowledgeScraper(team_id, user_id, processing_mode)
+        scraper = KnowledgeScraper(team_id, user_id, processing_mode, skip_existing_urls)
         
         if processing_mode == "async":
             import asyncio
@@ -107,6 +109,7 @@ def scrape_company_knowledge(
             'user_id': user_id,
             'processing_mode': processing_mode,
             'iterative': iterative,
+            'skip_existing_urls': skip_existing_urls,
             'statistics': stats
         }
         
