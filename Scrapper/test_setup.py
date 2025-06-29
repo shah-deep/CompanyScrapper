@@ -4,7 +4,6 @@ Test script to verify the setup of the Knowledge Scraper.
 This script tests all major components without actually scraping content.
 """
 
-import asyncio
 import os
 import sys
 import logging
@@ -26,7 +25,7 @@ def setup_logging():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-async def test_config():
+def test_config():
     """Test configuration loading."""
     print("🔧 Testing Configuration...")
     
@@ -46,42 +45,42 @@ async def test_config():
         print("✅ Configuration loaded successfully")
         return True
 
-async def test_url_processor():
+def test_url_processor():
     """Test URL processor initialization."""
     print("\n🌐 Testing URL Processor...")
     
     try:
-        async with URLProcessor() as processor:
-            # Test basic functionality
-            test_urls = ["https://example.com", "https://test.com"]
-            processor.add_urls_to_queue(test_urls)
+        processor = URLProcessor()
+        # Test basic functionality
+        test_urls = ["https://example.com", "https://test.com"]
+        processor.add_urls_to_queue(test_urls)
+        
+        status = processor.get_queue_status()
+        if status['queue_length'] == 2:
+            print("✅ URL Processor working correctly")
+            return True
+        else:
+            print("❌ URL Processor queue not working correctly")
+            return False
             
-            status = processor.get_queue_status()
-            if status['queue_length'] == 2:
-                print("✅ URL Processor working correctly")
-                return True
-            else:
-                print("❌ URL Processor queue not working correctly")
-                return False
-                
     except Exception as e:
         print(f"❌ URL Processor test failed: {e}")
         return False
 
-async def test_content_extractor():
+def test_content_extractor():
     """Test content extractor initialization."""
     print("\n📄 Testing Content Extractor...")
     
     try:
-        async with ContentExtractor() as extractor:
-            print("✅ Content Extractor initialized successfully")
-            return True
-            
+        extractor = ContentExtractor()
+        print("✅ Content Extractor initialized successfully")
+        return True
+        
     except Exception as e:
         print(f"❌ Content Extractor test failed: {e}")
         return False
 
-async def test_llm_processor():
+def test_llm_processor():
     """Test LLM processor initialization."""
     print("\n🤖 Testing LLM Processor...")
     
@@ -94,30 +93,28 @@ async def test_llm_processor():
         print(f"❌ LLM Processor test failed: {e}")
         return False
 
-async def test_database_connection():
+def test_database_connection():
     """Test MongoDB connection."""
     print("\n🗄️ Testing Database Connection...")
     
     try:
         db_handler = DatabaseHandler()
-        await db_handler.connect()
         
         # Test basic operations
-        stats = await db_handler.get_statistics()
+        stats = db_handler.get_statistics_sync()
         print(f"✅ Database connected successfully")
         print(f"   - Database: {stats.get('database_name', 'Unknown')}")
         print(f"   - Collection: {stats.get('collection_name', 'Unknown')}")
         print(f"   - Total teams: {stats.get('total_teams', 0)}")
         print(f"   - Total items: {stats.get('total_items', 0)}")
         
-        await db_handler.disconnect()
         return True
         
     except Exception as e:
         print(f"❌ Database connection test failed: {e}")
         return False
 
-async def test_gemini_api():
+def test_gemini_api():
     """Test Gemini API connection."""
     print("\n🧠 Testing Gemini API...")
     
@@ -131,7 +128,7 @@ async def test_gemini_api():
             'content_type': 'blog'
         }
         
-        is_valid = await llm.validate_content(test_content)
+        is_valid = llm.validate_content_sync(test_content)
         print(f"✅ Gemini API working correctly (validation result: {is_valid})")
         return True
         
@@ -139,7 +136,22 @@ async def test_gemini_api():
         print(f"❌ Gemini API test failed: {e}")
         return False
 
-async def main():
+def test_multiprocessing():
+    """Test multiprocessing functionality."""
+    print("\n⚡ Testing Multiprocessing...")
+    
+    try:
+        from main import KnowledgeScraper
+        
+        with KnowledgeScraper("test_team_123", "test_user") as scraper:
+            print(f"✅ Process pool initialized with {scraper.max_workers} workers")
+            return True
+            
+    except Exception as e:
+        print(f"❌ Multiprocessing test failed: {e}")
+        return False
+
+def main():
     """Run all tests."""
     print("🚀 Knowledge Scraper Setup Test")
     print("=" * 50)
@@ -152,14 +164,15 @@ async def main():
         test_content_extractor,
         test_llm_processor,
         test_database_connection,
-        test_gemini_api
+        test_gemini_api,
+        test_multiprocessing
     ]
     
     results = []
     
     for test in tests:
         try:
-            result = await test()
+            result = test()
             results.append(result)
         except Exception as e:
             print(f"❌ Test failed with exception: {e}")
@@ -175,7 +188,8 @@ async def main():
         "Content Extractor",
         "LLM Processor",
         "Database Connection",
-        "Gemini API"
+        "Gemini API",
+        "Multiprocessing"
     ]
     
     passed = 0
@@ -200,4 +214,4 @@ async def main():
         print("- MongoDB connection string issues")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    main() 

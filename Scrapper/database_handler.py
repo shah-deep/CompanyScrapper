@@ -3,7 +3,8 @@ from typing import Dict, Any, List, Optional
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError, ConnectionFailure
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+import asyncio
 
 from config import Config
 
@@ -77,8 +78,8 @@ class DatabaseHandler:
                             continue
                     
                     # Add timestamp to item
-                    item['created_at'] = datetime.utcnow()
-                    item['updated_at'] = datetime.utcnow()
+                    item['created_at'] = datetime.now(timezone.utc)
+                    item['updated_at'] = datetime.now(timezone.utc)
                     
                     # Add item to existing team
                     result = self.collection.update_one(
@@ -94,14 +95,14 @@ class DatabaseHandler:
             else:
                 # Create new team document
                 for item in items:
-                    item['created_at'] = datetime.utcnow()
-                    item['updated_at'] = datetime.utcnow()
+                    item['created_at'] = datetime.now(timezone.utc)
+                    item['updated_at'] = datetime.now(timezone.utc)
                 
                 team_document = {
                     "team_id": team_id,
                     "items": items,
-                    "created_at": datetime.utcnow(),
-                    "updated_at": datetime.utcnow()
+                    "created_at": datetime.now(timezone.utc),
+                    "updated_at": datetime.now(timezone.utc)
                 }
                 
                 result = self.collection.insert_one(team_document)
@@ -119,6 +120,21 @@ class DatabaseHandler:
         except Exception as e:
             self.logger.error(f"Error saving knowledge item: {e}")
             return False
+    
+    def save_knowledge_item_sync(self, knowledge_data: Dict[str, Any]) -> bool:
+        """Synchronous version of save_knowledge_item for multiprocessing workers."""
+        # Create a new event loop for this thread/process
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        try:
+            return loop.run_until_complete(self.save_knowledge_item(knowledge_data))
+        finally:
+            if loop.is_running():
+                loop.close()
     
     async def get_team_knowledge(self, team_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve all knowledge items for a team."""
@@ -216,4 +232,19 @@ class DatabaseHandler:
             
         except Exception as e:
             self.logger.error(f"Error getting statistics: {e}")
-            return {} 
+            return {}
+    
+    def get_statistics_sync(self) -> Dict[str, Any]:
+        """Synchronous version of get_statistics for multiprocessing workers."""
+        # Create a new event loop for this thread/process
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        try:
+            return loop.run_until_complete(self.get_statistics())
+        finally:
+            if loop.is_running():
+                loop.close() 

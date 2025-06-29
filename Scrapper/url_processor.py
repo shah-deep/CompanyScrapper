@@ -257,4 +257,21 @@ class URLProcessor:
                 other_urls.append(url)
         
         # Return content URLs first, then others
-        return content_urls + other_urls 
+        return content_urls + other_urls
+    
+    def discover_subpages_sync(self, url: str) -> List[str]:
+        """Synchronous version of discover_subpages for multiprocessing workers."""
+        import asyncio
+        
+        # Create a new event loop for this thread/process
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        try:
+            return loop.run_until_complete(self.discover_subpages(url))
+        finally:
+            if loop.is_running():
+                loop.close() 

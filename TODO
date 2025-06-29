@@ -2,7 +2,7 @@
 - Don't include user id in the block added to items.
 - Author is not retrived in many cases
 - Only convert the page contents to markdown format, do not modify, shortern or change any content
-- Filer to be added in Crawler to skip certain url patters with regex
+- Filter to be added in Crawler to skip certain url patters with certain words (like Reddit), but making sure the word is not in company name or url.
 - Support for PDFs & Google Drive links
 - Skip pages that do not have technical info, those like terms page or some general page.
 - When processing a link, ignore links that are external.

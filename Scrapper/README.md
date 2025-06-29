@@ -1,10 +1,11 @@
 # Knowledge Scraper
 
-A powerful web scraping and knowledge extraction application that processes URLs, extracts technical content, and stores structured knowledge in MongoDB using Gemini AI and LangChain.
+A powerful web scraping and knowledge extraction application that processes URLs, extracts technical content, and stores structured knowledge in MongoDB using Gemini AI and true multiprocessing.
 
 ## Features
 
-- **Parallel URL Processing**: Efficiently processes multiple URLs concurrently
+- **True Parallel Processing**: Uses multiprocessing instead of threading for better CPU utilization
+- **No Locks**: Each process works independently without shared state conflicts
 - **Iterative Subpage Discovery**: Automatically discovers and processes subpages with iterative refinement
 - **Subpage File Management**: Creates separate subpage files and tracks new discoveries
 - **Multi-format Support**: Handles HTML pages, PDFs, and plain text files
@@ -45,7 +46,7 @@ A powerful web scraping and knowledge extraction application that processes URLs
 
 ### Optional Configuration
 
-- `MAX_CONCURRENT_REQUESTS`: Number of parallel requests (default: 5)
+- `MAX_CONCURRENT_REQUESTS`: Number of parallel processes (default: 5, max: CPU cores)
 - `REQUEST_TIMEOUT`: Request timeout in seconds (default: 30)
 - `MAX_CONTENT_LENGTH`: Maximum content length to process (default: 100000)
 
@@ -70,7 +71,7 @@ python main.py urls.txt --team-id your_team_id --iterative
 **How it works:**
 1. Loads URLs from the input file (e.g., `abc.txt`)
 2. Creates a separate subpage file (e.g., `abc_subpage.txt`) for discovered URLs
-3. Processes each URL and discovers subpages
+3. Processes each URL and discovers subpages using multiprocessing
 4. Identifies new URLs not in the original file
 5. Appends new URLs to the original file
 6. Repeats the process for new URLs until no new links are found
@@ -105,6 +106,23 @@ https://example.com/blog/post2
 https://example.com/guides/getting-started
 ```
 
+## Multiprocessing Architecture
+
+### Key Benefits
+
+- **True Parallelism**: Each URL is processed in a separate process
+- **No GIL Limitations**: Bypasses Python's Global Interpreter Lock
+- **Better CPU Utilization**: Utilizes all available CPU cores
+- **Isolated Processing**: Each process has its own memory space
+- **Fault Tolerance**: Process failures don't affect other processes
+
+### Process Pool Management
+
+- **Dynamic Worker Count**: Automatically uses optimal number of workers (min of MAX_CONCURRENT_REQUESTS and CPU cores)
+- **Resource Management**: Proper cleanup of process pools
+- **Error Handling**: Graceful handling of process failures
+- **Result Collection**: Efficient collection of results as they complete
+
 ## Iterative Processing Details
 
 ### File Management
@@ -112,18 +130,20 @@ https://example.com/guides/getting-started
 When using `--iterative` mode:
 
 - **Input file**: `abc.txt` (your original URLs)
-- **Subpage file**: `abc_subpage.txt` (all discovered URLs)
+- **Subpage file**: `abc_subpage.txt` (discovered URLs that haven't been added to original file yet)
 - **Updated input file**: `abc.txt` (appended with new URLs)
+- **Clean subpage file**: URLs are removed from subpage file when added to original file
 
 ### Processing Flow
 
 1. **Initial Load**: Read URLs from input file
 2. **Iteration Loop**:
-   - Process current batch of URLs
+   - Process current batch of URLs using multiprocessing
    - Discover subpages for each URL
    - Save all discovered URLs to subpage file
    - Identify new URLs not in original file
    - Append new URLs to original file
+   - Remove newly added URLs from subpage file (keeps it clean)
    - Continue with new URLs in next iteration
 3. **Termination**: Stop when no new URLs are found
 
@@ -137,6 +157,7 @@ Total URLs processed so far: 0
 ============================================================
 Discovered 15 subpages from https://example.com/blog
 Appended 12 new URLs to abc.txt
+Removed 12 URLs from subpage file abc_subpage.txt
 
 ============================================================
 ITERATION 2
@@ -145,6 +166,7 @@ Total URLs processed so far: 3
 ============================================================
 Discovered 8 subpages from https://example.com/blog/post1
 Appended 5 new URLs to abc.txt
+Removed 5 URLs from subpage file abc_subpage.txt
 
 ============================================================
 ITERATION 3
@@ -158,20 +180,22 @@ ITERATIVE PROCESSING COMPLETED
 Total iterations: 3
 Total URLs processed: 20
 Total subpages discovered: 28
-Subpage file: abc_subpage.txt
+Subpage file: abc_subpage.txt (contains only unprocessed discovered URLs)
 ============================================================
 ```
 
 ## How It Works
 
 1. **URL Loading**: Reads URLs from the specified text file
-2. **Subpage Discovery**: For each URL, discovers related subpages and adds them to the queue
-3. **Content Extraction**: Extracts content from each URL (HTML, PDF, or text)
-4. **Content Validation**: Uses AI to validate if content is worth processing
-5. **Knowledge Extraction**: Uses Gemini AI to extract structured technical knowledge
-6. **Markdown Conversion**: Converts content to well-formatted Markdown
-7. **Database Storage**: Saves structured knowledge to MongoDB
-8. **Iterative Refinement**: (NEW!) Continues discovering and processing until no new content is found
+2. **Process Pool Creation**: Initializes a pool of worker processes
+3. **Parallel Processing**: Each URL is processed in a separate process
+4. **Subpage Discovery**: For each URL, discovers related subpages
+5. **Content Extraction**: Extracts content from each URL (HTML, PDF, or text)
+6. **Content Validation**: Uses AI to validate if content is worth processing
+7. **Knowledge Extraction**: Uses Gemini AI to extract structured technical knowledge
+8. **Markdown Conversion**: Converts content to well-formatted Markdown
+9. **Database Storage**: Saves structured knowledge to MongoDB
+10. **Iterative Refinement**: Continues discovering and processing until no new content is found
 
 ## Output Format
 
@@ -219,6 +243,7 @@ The application includes comprehensive error handling:
 - API rate limiting
 - Database connection issues
 - Content processing failures
+- Process failures and recovery
 - Iterative processing safeguards
 
 ## Logging
@@ -229,8 +254,10 @@ Logs are written to both:
 
 ## Performance Considerations
 
-- **Concurrency**: Configurable parallel processing
-- **Rate Limiting**: Built-in request throttling
+- **Multiprocessing**: True parallel processing without GIL limitations
+- **CPU Optimization**: Automatically uses optimal number of processes
+- **Memory Isolation**: Each process has independent memory space
+- **Rate Limiting**: Built-in request throttling per process
 - **Content Filtering**: Skips non-technical content
 - **Duplicate Detection**: Prevents processing the same URL multiple times
 - **Smart URL Filtering**: Prioritizes content pages over utility pages
@@ -238,7 +265,7 @@ Logs are written to both:
 
 ## Testing
 
-Run the test script to verify the iterative functionality:
+Run the test script to verify the multiprocessing functionality:
 
 ```bash
 python test_iterative.py
@@ -246,7 +273,7 @@ python test_iterative.py
 
 This will:
 - Create a test URL file
-- Run iterative processing
+- Run iterative processing with multiprocessing
 - Show results and statistics
 - Clean up test files
 
@@ -269,7 +296,12 @@ This will:
    - Verify content type support
    - Review network connectivity
 
-4. **Iterative Processing Issues**
+4. **Multiprocessing Issues**
+   - Check system resources (CPU, memory)
+   - Ensure proper file permissions
+   - Monitor process pool size
+
+5. **Iterative Processing Issues**
    - Check file permissions for writing
    - Ensure sufficient disk space
    - Monitor memory usage for large URL sets
@@ -281,6 +313,13 @@ Enable debug logging by modifying the logging level in `main.py`:
 ```python
 logging.basicConfig(level=logging.DEBUG, ...)
 ```
+
+### Performance Tuning
+
+- **Adjust MAX_CONCURRENT_REQUESTS**: Set based on your CPU cores and system resources
+- **Monitor Memory Usage**: Each process uses additional memory
+- **Network Bandwidth**: Consider your network capacity when setting process count
+- **API Rate Limits**: Ensure you don't exceed API quotas with multiple processes
 
 ## Contributing
 

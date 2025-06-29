@@ -4,6 +4,7 @@ from google.generativeai.generative_models import GenerativeModel
 from google.generativeai.client import configure
 import json
 import re
+import asyncio
 
 from config import Config
 
@@ -207,4 +208,34 @@ class LLMProcessor:
             
         except Exception as e:
             self.logger.error(f"Error validating content: {e}")
-            return False 
+            return False
+    
+    def validate_content_sync(self, content_data: Dict[str, Any]) -> bool:
+        """Synchronous version of validate_content for multiprocessing workers."""
+        # Create a new event loop for this thread/process
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        try:
+            return loop.run_until_complete(self.validate_content(content_data))
+        finally:
+            if loop.is_running():
+                loop.close()
+    
+    def process_content_sync(self, content_data: Dict[str, Any], team_id: str, user_id: str = "") -> Optional[Dict[str, Any]]:
+        """Synchronous version of process_content for multiprocessing workers."""
+        # Create a new event loop for this thread/process
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        try:
+            return loop.run_until_complete(self.process_content(content_data, team_id, user_id))
+        finally:
+            if loop.is_running():
+                loop.close() 

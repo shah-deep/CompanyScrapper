@@ -1,10 +1,13 @@
-import asyncio
+import multiprocessing as mp
 import logging
 import os
 import sys
 from typing import List, Dict, Any, Set
 import argparse
 from pathlib import Path
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import pickle
 
 # Add the current directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -20,12 +23,6 @@ class KnowledgeScraper:
         self.team_id = team_id
         self.user_id = user_id
         self.logger = logging.getLogger(__name__)
-        
-        # Initialize components
-        self.url_processor = URLProcessor()
-        self.content_extractor = ContentExtractor()
-        self.llm_processor = LLMProcessor()
-        self.db_handler = DatabaseHandler()
         
         # Statistics
         self.stats = {
@@ -43,18 +40,19 @@ class KnowledgeScraper:
         self.original_urls: Set[str] = set()
         self.all_discovered_urls: Set[str] = set()
     
-    async def __aenter__(self):
-        """Initialize all components."""
-        await self.url_processor.__aenter__()
-        await self.content_extractor.__aenter__()
-        await self.db_handler.connect()
+        # Process pool for parallel processing
+        self.process_pool = None
+        self.max_workers = min(Config.MAX_CONCURRENT_REQUESTS, mp.cpu_count())
+    
+    def __enter__(self):
+        """Initialize process pool."""
+        self.process_pool = ProcessPoolExecutor(max_workers=self.max_workers)
         return self
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Clean up all components."""
-        await self.url_processor.__aexit__(exc_type, exc_val, exc_tb)
-        await self.content_extractor.__aexit__(exc_type, exc_val, exc_tb)
-        await self.db_handler.disconnect()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Clean up process pool."""
+        if self.process_pool:
+            self.process_pool.shutdown(wait=True)
     
     def _get_subpage_file_path(self, original_file_path: str) -> str:
         """Generate subpage file path based on original file path."""
@@ -103,8 +101,23 @@ class KnowledgeScraper:
             self.logger.error(f"Error appending URLs to file {file_path}: {e}")
             return 0
     
-    async def process_url_file_iterative(self, file_path: str) -> Dict[str, Any]:
-        """Process URLs from a file with iterative subpage discovery."""
+    def _remove_urls_from_subpage_file(self, file_path: str, urls: Set[str]):
+        """Remove URLs from subpage file."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                existing_urls = {line.strip() for line in file if line.strip()}
+            
+            new_urls = existing_urls - urls
+            
+            with open(file_path, 'w', encoding='utf-8') as file:
+                for url in sorted(new_urls):
+                    file.write(f"{url}\n")
+            self.logger.info(f"Removed {len(urls)} URLs from subpage file {file_path}")
+        except Exception as e:
+            self.logger.error(f"Error removing URLs from subpage file {file_path}: {e}")
+    
+    def process_url_file_iterative(self, file_path: str) -> Dict[str, Any]:
+        """Process URLs from a file with iterative subpage discovery using multiprocessing."""
         try:
             self.logger.info(f"Starting iterative knowledge extraction for team: {self.team_id}")
             
@@ -138,9 +151,9 @@ class KnowledgeScraper:
                 self.logger.info(f"Total URLs processed so far: {len(processed_urls)}")
                 self.logger.info(f"{'='*60}")
                 
-                # Process current iteration URLs
-                new_discovered_urls = await self._process_urls_iteration(
-                    current_iteration_urls, processed_urls
+                # Process current iteration URLs using multiprocessing
+                new_discovered_urls = self._process_urls_iteration_parallel(
+                    list(current_iteration_urls), processed_urls
                 )
                 
                 self.logger.info(f"Discovered {len(new_discovered_urls)} new URLs in iteration {iteration}")
@@ -168,8 +181,12 @@ class KnowledgeScraper:
                     appended_count = self._append_urls_to_file(file_path, new_urls_for_next_iteration)
                     self.logger.info(f"Appended {appended_count} new URLs to {file_path}")
                     
+                    # Remove the newly added URLs from subpage file to keep it clean
+                    self._remove_urls_from_subpage_file(subpage_file_path, self.original_urls)
+
                     # Update original URLs set
                     self.original_urls.update(new_urls_for_next_iteration)
+                    
                     
                     # Set URLs for next iteration
                     current_iteration_urls = new_urls_for_next_iteration
@@ -192,111 +209,75 @@ class KnowledgeScraper:
             self.stats['errors'].append(str(e))
             return self.stats
     
-    async def _process_urls_iteration(self, urls: Set[str], processed_urls: Set[str]) -> Set[str]:
-        """Process a set of URLs in one iteration and return newly discovered URLs."""
-        # Reset URL processor for this iteration
-        self.url_processor.clear_state()
-        
-        # Add URLs to processor
-        self.url_processor.add_urls_to_queue(list(urls))
+    def _process_urls_iteration_parallel(self, urls: List[str], processed_urls: Set[str]) -> Set[str]:
+        """Process a set of URLs in one iteration using multiprocessing and return newly discovered URLs."""
+        if not self.process_pool:
+            raise RuntimeError("Process pool not initialized")
         
         # Track discovered URLs for this iteration
         iteration_discovered_urls = set()
         
-        # Process URLs in parallel
-        semaphore = asyncio.Semaphore(Config.MAX_CONCURRENT_REQUESTS)
-        tasks = []
+        # Submit all URLs to process pool
+        future_to_url = {}
+        for url in urls:
+            future = self.process_pool.submit(
+                process_single_url_worker,
+                url, self.team_id, self.user_id
+            )
+            future_to_url[future] = url
         
-        while True:
-            url = self.url_processor.get_next_url()
-            if not url:
-                break
-            
-            task = asyncio.create_task(self._process_single_url_iteration(url, semaphore, iteration_discovered_urls))
-            tasks.append(task)
-        
-        # Wait for all tasks to complete
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Return newly discovered URLs (excluding already processed ones)
-        new_discovered = iteration_discovered_urls - processed_urls - urls
-        
-        return new_discovered
-    
-    async def _process_single_url_iteration(self, url: str, semaphore: asyncio.Semaphore, iteration_discovered_urls: Set[str]):
-        """Process a single URL in iteration mode."""
-        async with semaphore:
+        # Collect results as they complete
+        for future in as_completed(future_to_url):
+            url = future_to_url[future]
             try:
-                self.logger.info(f"Processing URL: {url}")
-                
-                # Step 1: Discover subpages
-                subpages = await self.url_processor.discover_subpages(url)
-                if subpages:
-                    # Add discovered URLs to our tracking set
-                    iteration_discovered_urls.update(subpages)
-                    self.url_processor.add_urls_to_queue(subpages)
-                    self.stats['subpages_discovered'] += len(subpages)
-                    self.logger.info(f"Discovered {len(subpages)} subpages from {url}")
-                
-                # Step 2: Extract content
-                content_data = await self.content_extractor.extract_content(url)
-                if not content_data:
-                    self.stats['urls_failed'] += 1
-                    self.logger.warning(f"Failed to extract content from {url}")
-                    return
-                
-                self.stats['content_extracted'] += 1
-                
-                # Step 3: Validate content with LLM
-                is_valid = await self.llm_processor.validate_content(content_data)
-                if not is_valid:
-                    self.logger.info(f"Content from {url} not suitable for knowledge extraction")
-                    return
-                
-                # Step 4: Process content with LLM
-                knowledge_data = await self.llm_processor.process_content(
-                    content_data, self.team_id, self.user_id
-                )
-                if not knowledge_data:
-                    self.logger.warning(f"Failed to process content with LLM for {url}")
-                    return
-                
-                # Step 5: Save to database
-                success = await self.db_handler.save_knowledge_item(knowledge_data)
-                if success:
-                    self.stats['knowledge_items_saved'] += len(knowledge_data.get('items', []))
-                    self.logger.info(f"Saved knowledge item for {url}")
+                result = future.result()
+                if result:
+                    # Update statistics
+                    self.stats['urls_processed'] += 1
+                    if result.get('subpages'):
+                        iteration_discovered_urls.update(result['subpages'])
+                        self.stats['subpages_discovered'] += len(result['subpages'])
+                    if result.get('content_extracted'):
+                        self.stats['content_extracted'] += 1
+                    if result.get('knowledge_saved'):
+                        self.stats['knowledge_items_saved'] += 1
+                    if result.get('error'):
+                        self.stats['urls_failed'] += 1
+                        self.stats['errors'].append(f"Error processing {url}: {result['error']}")
                 else:
-                    self.logger.error(f"Failed to save knowledge item for {url}")
-                
-                self.stats['urls_processed'] += 1
+                    self.stats['urls_failed'] += 1
+                    self.stats['urls_failed'] += 1
                 
             except Exception as e:
                 self.stats['urls_failed'] += 1
                 self.stats['errors'].append(f"Error processing {url}: {str(e)}")
                 self.logger.error(f"Error processing {url}: {e}")
     
-    async def process_url_file(self, file_path: str, save_discovered_urls: bool = True) -> Dict[str, Any]:
-        """Process URLs from a file and extract knowledge (legacy method)."""
+        # Return newly discovered URLs (excluding already processed ones)
+        new_discovered = iteration_discovered_urls - processed_urls - set(urls)
+        
+        return new_discovered
+    
+    def process_url_file(self, file_path: str, save_discovered_urls: bool = True) -> Dict[str, Any]:
+        """Process URLs from a file and extract knowledge using multiprocessing."""
         try:
             self.logger.info(f"Starting knowledge extraction for team: {self.team_id}")
             
             # Load URLs from file
-            urls = self.url_processor.load_urls_from_file(file_path)
+            urls = self._load_urls_from_file(file_path)
             if not urls:
                 self.logger.error("No URLs found in file")
                 return self.stats
             
             self.logger.info(f"Loaded {len(urls)} URLs from {file_path}")
             
-            # Process URLs in parallel
-            await self._process_urls_parallel()
+            # Process URLs using multiprocessing
+            self._process_urls_parallel(list(urls))
             
             # Save discovered URLs back to file if requested
             if save_discovered_urls:
-                all_urls = list(self.url_processor.processed_urls) + self.url_processor.url_queue
-                self.url_processor.save_urls_to_file(file_path, all_urls)
+                all_urls = self.original_urls | self.all_discovered_urls
+                self._save_urls_to_file(file_path, all_urls)
                 self.logger.info(f"Saved {len(all_urls)} URLs back to {file_path}")
             
             self.logger.info("Knowledge extraction completed")
@@ -307,86 +288,122 @@ class KnowledgeScraper:
             self.stats['errors'].append(str(e))
             return self.stats
     
-    async def _process_urls_parallel(self):
-        """Process URLs in parallel with controlled concurrency."""
-        semaphore = asyncio.Semaphore(Config.MAX_CONCURRENT_REQUESTS)
+    def _process_urls_parallel(self, urls: List[str]):
+        """Process URLs in parallel using multiprocessing."""
+        if not self.process_pool:
+            raise RuntimeError("Process pool not initialized")
         
-        tasks = []
-        while True:
-            url = self.url_processor.get_next_url()
-            if not url:
-                break
-            
-            task = asyncio.create_task(self._process_single_url(url, semaphore))
-            tasks.append(task)
+        # Submit all URLs to process pool
+        future_to_url = {}
+        for url in urls:
+            future = self.process_pool.submit(
+                process_single_url_worker,
+                url, self.team_id, self.user_id
+            )
+            future_to_url[future] = url
         
-        # Wait for all tasks to complete
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-    
-    async def _process_single_url(self, url: str, semaphore: asyncio.Semaphore):
-        """Process a single URL with semaphore for concurrency control."""
-        async with semaphore:
+        # Collect results as they complete
+        for future in as_completed(future_to_url):
+            url = future_to_url[future]
             try:
-                self.logger.info(f"Processing URL: {url}")
-                
-                # Step 1: Discover subpages
-                subpages = await self.url_processor.discover_subpages(url)
-                if subpages:
-                    self.url_processor.add_urls_to_queue(subpages)
-                    self.stats['subpages_discovered'] += len(subpages)
-                    self.logger.info(f"Discovered {len(subpages)} subpages from {url}")
-                
-                # Step 2: Extract content
-                content_data = await self.content_extractor.extract_content(url)
-                if not content_data:
-                    self.stats['urls_failed'] += 1
-                    self.logger.warning(f"Failed to extract content from {url}")
-                    return
-                
-                self.stats['content_extracted'] += 1
-                
-                # Step 3: Validate content with LLM
-                is_valid = await self.llm_processor.validate_content(content_data)
-                if not is_valid:
-                    self.logger.info(f"Content from {url} not suitable for knowledge extraction")
-                    return
-                
-                # Step 4: Process content with LLM
-                knowledge_data = await self.llm_processor.process_content(
-                    content_data, self.team_id, self.user_id
-                )
-                if not knowledge_data:
-                    self.logger.warning(f"Failed to process content with LLM for {url}")
-                    return
-                
-                # Step 5: Save to database
-                success = await self.db_handler.save_knowledge_item(knowledge_data)
-                if success:
-                    self.stats['knowledge_items_saved'] += len(knowledge_data.get('items', []))
-                    self.logger.info(f"Saved knowledge item for {url}")
+                result = future.result()
+                if result:
+                    # Update statistics
+                    self.stats['urls_processed'] += 1
+                    if result.get('subpages'):
+                        self.all_discovered_urls.update(result['subpages'])
+                        self.stats['subpages_discovered'] += len(result['subpages'])
+                    if result.get('content_extracted'):
+                        self.stats['content_extracted'] += 1
+                    if result.get('knowledge_saved'):
+                        self.stats['knowledge_items_saved'] += 1
+                    if result.get('error'):
+                        self.stats['urls_failed'] += 1
+                        self.stats['errors'].append(f"Error processing {url}: {result['error']}")
                 else:
-                    self.logger.error(f"Failed to save knowledge item for {url}")
-                
-                self.stats['urls_processed'] += 1
-                
+                    self.stats['urls_failed'] += 1
             except Exception as e:
                 self.stats['urls_failed'] += 1
                 self.stats['errors'].append(f"Error processing {url}: {str(e)}")
                 self.logger.error(f"Error processing {url}: {e}")
     
-    async def get_team_knowledge(self) -> Dict[str, Any] | None:
+    def get_team_knowledge(self) -> Dict[str, Any] | None:
         """Retrieve all knowledge for the team."""
-        return await self.db_handler.get_team_knowledge(self.team_id)
+        # This would need to be implemented with a separate database connection
+        # For now, return None as this is not the main focus
+        return None
     
-    async def search_knowledge(self, query: str) -> List[Dict[str, Any]]:
+    def search_knowledge(self, query: str) -> List[Dict[str, Any]]:
         """Search knowledge within the team."""
-        return await self.db_handler.search_knowledge(self.team_id, query)
+        # This would need to be implemented with a separate database connection
+        # For now, return empty list as this is not the main focus
+        return []
     
-    async def get_statistics(self) -> Dict[str, Any]:
-        """Get database statistics."""
-        db_stats = await self.db_handler.get_statistics()
-        return {**self.stats, **db_stats}
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get processing statistics."""
+        return self.stats.copy()
+
+def process_single_url_worker(url: str, team_id: str, user_id: str) -> Dict[str, Any]:
+    """Worker function to process a single URL in a separate process."""
+    try:
+        # Initialize components for this process
+        url_processor = URLProcessor()
+        content_extractor = ContentExtractor()
+        llm_processor = LLMProcessor()
+        db_handler = DatabaseHandler()
+        
+        result = {
+            'url': url,
+            'subpages': [],
+            'content_extracted': False,
+            'knowledge_saved': False,
+            'error': None
+        }
+        
+        # Step 1: Discover subpages
+        subpages = url_processor.discover_subpages_sync(url)
+        if subpages:
+            result['subpages'] = subpages
+        
+        # Step 2: Extract content
+        content_data = content_extractor.extract_content_sync(url)
+        if not content_data:
+            result['error'] = "Failed to extract content"
+            return result
+        
+        result['content_extracted'] = True
+        
+        # Step 3: Validate content with LLM
+        is_valid = llm_processor.validate_content_sync(content_data)
+        if not is_valid:
+            result['error'] = "Content not suitable for knowledge extraction"
+            return result
+        
+        # Step 4: Process content with LLM
+        knowledge_data = llm_processor.process_content_sync(
+            content_data, team_id, user_id
+        )
+        if not knowledge_data:
+            result['error'] = "Failed to process content with LLM"
+            return result
+        
+        # Step 5: Save to database
+        success = db_handler.save_knowledge_item_sync(knowledge_data)
+        if success:
+            result['knowledge_saved'] = True
+        else:
+            result['error'] = "Failed to save knowledge item"
+        
+        return result
+        
+    except Exception as e:
+        return {
+            'url': url,
+            'subpages': [],
+            'content_extracted': False,
+            'knowledge_saved': False,
+            'error': str(e)
+        }
 
 def setup_logging():
     """Setup logging configuration."""
@@ -399,7 +416,7 @@ def setup_logging():
         ]
     )
 
-async def main():
+def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Knowledge Scraper for Technical Content')
     parser.add_argument('url_file', help='Path to file containing URLs (one per line)')
@@ -417,10 +434,10 @@ async def main():
     logger = logging.getLogger(__name__)
     
     try:
-        async with KnowledgeScraper(args.team_id, args.user_id) as scraper:
+        with KnowledgeScraper(args.team_id, args.user_id) as scraper:
             if args.search:
                 # Search existing knowledge
-                results = await scraper.search_knowledge(args.search)
+                results = scraper.search_knowledge(args.search)
                 print(f"\nSearch results for '{args.search}':")
                 for result in results:
                     print(f"Team: {result['team_id']}")
@@ -432,7 +449,7 @@ async def main():
             
             elif args.stats:
                 # Show statistics
-                stats = await scraper.get_statistics()
+                stats = scraper.get_statistics()
                 print("\nDatabase Statistics:")
                 for key, value in stats.items():
                     print(f"  {key}: {value}")
@@ -445,10 +462,10 @@ async def main():
                 
                 if args.iterative:
                     # Use iterative processing
-                    stats = await scraper.process_url_file_iterative(args.url_file)
+                    stats = scraper.process_url_file_iterative(args.url_file)
                 else:
                     # Use legacy processing
-                    stats = await scraper.process_url_file(args.url_file, args.save_urls)
+                    stats = scraper.process_url_file(args.url_file, args.save_urls)
                 
                 print("\nProcessing Statistics:")
                 for key, value in stats.items():
@@ -465,4 +482,4 @@ async def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    main() 

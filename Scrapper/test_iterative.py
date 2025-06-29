@@ -4,7 +4,6 @@ Test script for iterative subpage discovery functionality.
 This script demonstrates the new iterative scraping capabilities.
 """
 
-import asyncio
 import os
 import sys
 import logging
@@ -15,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from main import KnowledgeScraper, setup_logging
 
-async def test_iterative_scraping():
+def test_iterative_scraping():
     """Test the iterative scraping functionality."""
     print("🧪 Testing Iterative Subpage Discovery")
     print("=" * 60)
@@ -40,11 +39,11 @@ async def test_iterative_scraping():
     
     try:
         # Initialize scraper with test team ID
-        async with KnowledgeScraper("test_team_123", "test_user") as scraper:
+        with KnowledgeScraper("test_team_123", "test_user") as scraper:
             print("\n🚀 Starting iterative processing...")
             
             # Run iterative processing
-            stats = await scraper.process_url_file_iterative(test_file)
+            stats = scraper.process_url_file_iterative(test_file)
             
             print("\n📊 Processing Results:")
             print("-" * 40)
@@ -89,14 +88,14 @@ async def test_iterative_scraping():
         #     subpage_file.unlink()
         #     print(f"🧹 Cleaned up: {subpage_file}")
 
-async def main():
+def main():
     """Main test function."""
     print("🧪 Knowledge Scraper - Iterative Test")
     print("=" * 60)
     
-    await test_iterative_scraping()
+    test_iterative_scraping()
     
     print("\n✅ Test completed!")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    main() 

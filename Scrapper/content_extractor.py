@@ -217,4 +217,21 @@ class ContentExtractor:
             if isinstance(content, str):
                 return content.strip()
         
-        return "" 
+        return ""
+
+    def extract_content_sync(self, url: str) -> Optional[Dict[str, Any]]:
+        """Synchronous version of extract_content for multiprocessing workers."""
+        import asyncio
+        
+        # Create a new event loop for this thread/process
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        try:
+            return loop.run_until_complete(self.extract_content(url))
+        finally:
+            if loop.is_running():
+                loop.close() 

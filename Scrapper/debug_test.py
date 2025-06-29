@@ -3,7 +3,6 @@
 Debug test script to diagnose iterative processing issues.
 """
 
-import asyncio
 import os
 import sys
 import logging
@@ -14,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from main import KnowledgeScraper, setup_logging
 
-async def debug_iterative_scraping():
+def debug_iterative_scraping():
     """Debug the iterative scraping functionality."""
     print("🔍 Debug Iterative Subpage Discovery")
     print("=" * 60)
@@ -45,11 +44,11 @@ async def debug_iterative_scraping():
     
     try:
         # Initialize scraper with test team ID
-        async with KnowledgeScraper("debug_team_123", "debug_user") as scraper:
+        with KnowledgeScraper("debug_team_123", "debug_user") as scraper:
             print("\n🚀 Starting iterative processing...")
             
             # Run iterative processing
-            stats = await scraper.process_url_file_iterative(test_file)
+            stats = scraper.process_url_file_iterative(test_file)
             
             print("\n📊 Processing Results:")
             print("-" * 40)
@@ -103,14 +102,14 @@ async def debug_iterative_scraping():
             subpage_file.unlink()
             print(f"🧹 Cleaned up: {subpage_file}")
 
-async def main():
+def main():
     """Main debug function."""
     print("🔍 Knowledge Scraper - Debug Test")
     print("=" * 60)
     
-    await debug_iterative_scraping()
+    debug_iterative_scraping()
     
     print("\n✅ Debug test completed!")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    main() 
