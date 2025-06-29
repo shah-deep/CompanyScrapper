@@ -41,14 +41,15 @@ class LLMProcessor:
             content = content_data.get('content', '')
             
             prompt = f"""
-            Convert the following content to well-formatted Markdown. 
-            Preserve all important information, structure, and formatting.
+            Convert the following content to clean Markdown format. 
+            IMPORTANT: Do not modify, shorten, or change any content. Only convert formatting to markdown.
+            Preserve ALL original text, information, and structure exactly as provided.
             
             Title: {title}
             Content:
             {content}
             
-            Please return only the markdown content without any additional text or explanations.
+            Return only the markdown-formatted content without any additional text or explanations.
             """
             
             response = self.model.generate_content(prompt)
