@@ -39,16 +39,14 @@ class LLMProcessor:
         try:
             title = content_data.get('title', '')
             content = content_data.get('content', '')
-            content_type = content_data.get('content_type', 'blog')
             
             prompt = f"""
             Convert the following content to well-formatted Markdown. 
             Preserve all important information, structure, and formatting.
             
             Title: {title}
-            Content Type: {content_type}
             Content:
-            {content[:8000]}  # Limit content length for API
+            {content}
             
             Please return only the markdown content without any additional text or explanations.
             """
@@ -80,7 +78,7 @@ class LLMProcessor:
         
         return markdown.strip()
     
-    async def _extract_knowledge(self, content_data: Dict[str, Any], markdown_content: str, team_id: str, user_id: str) -> Dict[str, Any]:
+    async def _extract_knowledge(self, content_data: Dict[str, Any], markdown_content: str, team_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """Extract structured knowledge from content."""
         try:
             title = content_data.get('title', '')
@@ -89,80 +87,105 @@ class LLMProcessor:
             url = content_data.get('url', '')
             
             prompt = f"""
-            Analyze the following content and extract technical knowledge in a structured format.
-            
+            Analyze the following content and perform these tasks:
+
+            1. FIRST, determine if this is technical content worth processing:
+               - Check if it contains technical concepts, code examples, programming topics, software development, APIs, algorithms, etc.
+               - If it's just general information, terms of service, privacy policy, or non-technical content, respond with "NOT_TECHNICAL"
+               - If it's technical content, proceed to step 2
+
+            2. If technical, extract and enhance metadata:
+               - Identify the content type (tutorial, documentation, blog post, case study, etc.)
+               - Find author information if not already provided
+               - Look for any technical expertise indicators
+
+            3. Extract structured technical knowledge:
+               - Technical concepts and explanations
+               - Best practices and methodologies  
+               - Code examples and technical solutions
+               - Industry insights and trends
+               - Practical tips and recommendations
+
             Content Information:
             - Title: {title}
-            - Content Type: {content_type}
-            - Author: {author}
+            - Current Content Type: {content_type}
+            - Current Author: {author}
             - URL: {url}
-            
+
             Content (Markdown):
-            {markdown_content[:6000]}  # Limit content length
+            {markdown_content}
+
+            Please respond in this exact format:
+            If NOT technical: "NOT_TECHNICAL"
+            If technical: 
+            "TECHNICAL|content_type|author|extracted_knowledge_markdown"
             
-            Please extract and structure the technical knowledge, concepts, insights, and key information from this content.
-            Focus on:
-            1. Technical concepts and explanations
-            2. Best practices and methodologies
-            3. Code examples and technical solutions
-            4. Industry insights and trends
-            5. Practical tips and recommendations
-            
-            Return the knowledge in a clear, well-organized markdown format that would be valuable for a technical knowledge base.
+            Where:
+            - content_type: the identified content type
+            - author: the found authors (single author or comma separated list string or original or empty string)
+            - extracted_knowledge_markdown: the structured technical knowledge
             """
             
             response = self.model.generate_content(prompt)
             
-            if response.text:
-                # Clean and structure the response
-                structured_content = self._clean_llm_response(response.text)
-                
-                return {
-                    "team_id": team_id,
-                    "items": [
-                        {
-                            "title": title,
-                            "content": structured_content,
-                            "content_type": content_type,
-                            "source_url": url,
-                            "author": author,
-                            "user_id": user_id
+            if not response.text:
+                return None
+            
+            response_text = response.text.strip()
+            
+            # Check if content is not technical
+            if response_text == "NOT_TECHNICAL":
+                self.logger.info(f"Skipping non-technical content: {title}")
+                return None
+            
+            # Parse technical response
+            if response_text.startswith("TECHNICAL|"):
+                try:
+                    parts = response_text.split("|", 3)
+                    if len(parts) == 4:
+                        _, extracted_content_type, extracted_author, structured_content = parts
+                        
+                        # Use extracted values if they're more specific than original
+                        final_content_type = extracted_content_type if extracted_content_type and extracted_content_type != 'blog' else content_type
+                        final_author = extracted_author if extracted_author and extracted_author != 'Unknown' else author
+                        
+                        # Clean the structured content
+                        cleaned_fullcontent = self._clean_llm_response(markdown_content)
+                        cleaned_content = self._clean_llm_response(structured_content)
+                        
+                        return {
+                            "team_id": team_id,
+                            "items": [
+                                {
+                                    "title": title,
+                                    "content": cleaned_content,
+                                    "full_content": cleaned_fullcontent,
+                                    "content_type": final_content_type,
+                                    "source_url": url,
+                                    "author": final_author
+                                }
+                            ]
                         }
-                    ]
-                }
-            else:
-                # Fallback: use original markdown content
-                return {
-                    "team_id": team_id,
-                    "items": [
-                        {
-                            "title": title,
-                            "content": markdown_content,
-                            "content_type": content_type,
-                            "source_url": url,
-                            "author": author,
-                            "user_id": user_id
-                        }
-                    ]
-                }
-                
-        except Exception as e:
-            self.logger.error(f"Error extracting knowledge: {e}")
-            # Return basic structure with original content
+                except Exception as e:
+                    self.logger.error(f"Error parsing LLM response: {e}")
+            
+            # Fallback: use original content if parsing fails
             return {
                 "team_id": team_id,
                 "items": [
                     {
-                        "title": content_data.get('title', ''),
+                        "title": title,
                         "content": markdown_content,
-                        "content_type": content_data.get('content_type', 'blog'),
-                        "source_url": content_data.get('url', ''),
-                        "author": content_data.get('author', ''),
-                        "user_id": user_id
+                        "content_type": content_type,
+                        "source_url": url,
+                        "author": author
                     }
                 ]
             }
-    
+                
+        except Exception as e:
+            self.logger.error(f"Error extracting knowledge: {e}")
+            return None
     def _clean_llm_response(self, response: str) -> str:
         """Clean and format LLM response."""
         # Remove any markdown code blocks that might wrap the response

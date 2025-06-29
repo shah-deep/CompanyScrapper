@@ -15,6 +15,8 @@ A powerful web scraping and knowledge extraction application that processes URLs
 - **Content Validation**: Validates content quality before processing
 - **Search Capabilities**: Search through stored knowledge
 - **Enhanced URL Filtering**: Smart filtering to prioritize content pages
+- **Multiple Author Extraction**: Automatically detects and formats multiple authors as comma-separated values
+- **Author Deduplication**: Removes duplicate authors and normalizes author names
 
 ## Installation
 
@@ -251,13 +253,31 @@ The application stores knowledge in the following format:
       "content_type": "blog|podcast_transcript|call_transcript|linkedin_post|reddit_comment|book|other",
       "source_url": "https://example.com/post",
       "author": "Author Name",
-      "user_id": "user123",
       "created_at": "2024-01-01T00:00:00Z",
       "updated_at": "2024-01-01T00:00:00Z"
     }
-  ]
+  ],
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z"
 }
 ```
+
+**Note**: The `user_id` parameter is used for processing context but is not stored in the database items. Only the `team_id` is stored at the document level for organizing knowledge by team.
+
+### Author Extraction
+
+The application now supports advanced author extraction:
+
+- **Multiple Authors**: Automatically detects multiple authors and formats them as comma-separated values
+  - Example: `"author": "John Doe, Jane Smith, Bob Johnson"`
+- **Author Deduplication**: Removes duplicate authors and normalizes author names
+- **Comprehensive Detection**: Finds authors from:
+  - CSS selectors (`.author`, `.byline`, etc.)
+  - Meta tags (`author`, `article:author`, `twitter:creator`)
+  - JSON-LD structured data
+  - Text patterns ("by Author Name", "Written by", etc.)
+  - Social media profiles and author bios
+- **LLM Integration**: The AI processor is aware of multiple authors and ensures proper attribution in extracted knowledge
 
 ## API Integration
 
