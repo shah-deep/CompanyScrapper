@@ -106,37 +106,36 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
                         additional_text: str, max_pages: int, skip_external: bool, 
                         skip_founder_blogs: bool, skip_founder_search: bool, skip_words: list):
     """Worker function for crawling company in a separate thread"""
-    try:
-        team_id = team_id.lower()
-        active_tasks[task_id] = {
-            'status': 'running',
-            'progress': 'Starting company crawling...',
-            'result': None
-        }
+    import threading
+    import time
+    team_id = team_id.lower()
+    active_tasks[task_id] = {
+        'status': 'running',
+        'progress': 'Starting company crawling...',
+        'result': None
+    }
 
-        # If there are additional URLs, recursively crawl them and add all discovered subpages to the file
-        if additional_urls:
-            active_tasks[task_id]['progress'] = 'Recursively discovering subpages for additional URLs...'
-            crawl_result = crawl_trusted_base_urls_api(
-                base_urls=additional_urls,
-                skip_words=skip_words if skip_words else None,
-                max_pages_per_domain=max_pages
-            )
-            if crawl_result.get('success'):
-                discovered_urls = crawl_result.get('discovered_urls', [])
-                # Add all discovered URLs to the team's file
-                add_result = add_urls_to_existing_file(
-                    team_id=team_id,
-                    additional_urls=discovered_urls
-                )
-                if add_result.get('success'):
-                    active_tasks[task_id]['progress'] = f"Added {add_result.get('urls_added', 0)} discovered subpages from additional URLs."
-                else:
-                    active_tasks[task_id]['progress'] = f"Failed to add discovered subpages: {add_result.get('error', 'Unknown error')}"
-            else:
-                active_tasks[task_id]['progress'] = f"Failed to crawl additional URLs: {crawl_result.get('error', 'Unknown error')}"
 
-        # Also add the original additional_urls themselves to the file (if not already present)
+    def add_discovered_subpages_when_file_exists():
+        file_path = get_url_file_path(team_id)
+        # Ensure the file exists, create if not
+        if not os.path.exists(file_path):
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    pass
+                active_tasks[task_id]['progress'] += " URL file did not exist, created new file."
+            except Exception as e:
+                active_tasks[task_id]['progress'] += f" Failed to create URL file: {str(e)}"
+                return
+        # Wait for the file to exist (max 60s)
+        for _ in range(60):
+            if os.path.exists(file_path):
+                break
+            time.sleep(1)
+        else:
+            active_tasks[task_id]['progress'] += f" Timed out waiting for URL file to be created."
+            return
+        # Always add the original additional_urls themselves first
         if additional_urls:
             add_result = add_urls_to_existing_file(
                 team_id=team_id,
@@ -146,7 +145,26 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
                 active_tasks[task_id]['progress'] += f" Added {add_result.get('urls_added', 0)} original additional URLs."
             else:
                 active_tasks[task_id]['progress'] += f" Failed to add original additional URLs: {add_result.get('error', 'Unknown error')}"
+        
 
+            crawl_result = crawl_trusted_base_urls_api(
+                base_urls=additional_urls,
+                skip_words=skip_words if skip_words else None,
+                max_pages_per_domain=max_pages,
+                output_file=file_path
+            )
+            if crawl_result.get('success'):
+                discovered_urls = crawl_result.get('discovered_urls', [])
+                add_result = add_urls_to_existing_file(
+                    team_id=team_id,
+                    additional_urls=discovered_urls
+                )
+                if add_result.get('success'):
+                    active_tasks[task_id]['progress'] += f" Added {add_result.get('urls_added', 0)} discovered subpages from additional URLs."
+                else:
+                    active_tasks[task_id]['progress'] += f" Failed to add discovered subpages: {add_result.get('error', 'Unknown error')}"
+            else:
+                active_tasks[task_id]['progress'] += f" Failed to crawl additional URLs: {crawl_result.get('error', 'Unknown error')}"
         # Also add any additional_text URLs
         if additional_text:
             add_result = add_urls_to_existing_file(
@@ -158,7 +176,11 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
             else:
                 active_tasks[task_id]['progress'] += f" Failed to add URLs from additional text: {add_result.get('error', 'Unknown error')}"
 
-        # Perform crawling
+    # Start the background thread for subpage discovery and URL addition
+    threading.Thread(target=add_discovered_subpages_when_file_exists, daemon=True).start()
+
+    try:
+        # Perform crawling (this will create the file)
         result = crawl_company(
             company_url=company_url,
             team_id=team_id,
@@ -263,6 +285,8 @@ def start_crawl():
         skip_words = data.get('skip_words', '')
         max_pages = int(data.get('max_pages', 20))
         skip_external = data.get('skip_external', False)
+        # If skipping external, also skip founder blogs
+        skip_founder_blogs = skip_external
         
         # Process inputs
         additional_urls_list, additional_text = extract_urls_from_combined_input(additional_input)
@@ -275,7 +299,7 @@ def start_crawl():
         thread = threading.Thread(
             target=crawl_company_worker,
             args=(task_id, company_url, team_id, additional_urls_list, additional_text, 
-                  max_pages, skip_external, False, False, skip_words_list)
+                  max_pages, skip_external, skip_founder_blogs, False, skip_words_list)
         )
         thread.daemon = True
         thread.start()

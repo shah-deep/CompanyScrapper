@@ -226,7 +226,33 @@ class BlogDiscovery:
         except Exception as e:
             print(f"Google search error: {str(e)}")
             return []
-    
+
+    def _google_search2(self, query, max_results=10):
+        """Perform Google Custom Search"""
+        try:
+            if not self.google_service:
+                return []
+                
+            results = []
+            for i in range(0, max_results, 10):
+                search_results = self.google_service.cse().list(
+                    q=query,
+                    cx=GOOGLE_CSE_ID,
+                    start=i
+                ).execute()
+                
+                if 'items' in search_results:
+                    results.extend(search_results['items'])
+                
+                if len(results) >= max_results:
+                    break
+            
+            return results[:max_results]
+            
+        except Exception as e:
+            print(f"Google search error: {str(e)}")
+            return []
+
     def _validate_founder_blog(self, url, title, snippet, founder, company_name):
         """Validate if a URL is likely a blog by the founder"""
         # Check if founder name appears in title or snippet
@@ -367,4 +393,28 @@ class BlogDiscovery:
                 
         except Exception as e:
             print(f"LLM validation error for {url_data.get('url', 'unknown')}: {str(e)}")
-            return False 
+            return False
+    
+    def search_blog_subpages(self, base_blog_url, max_results=10):
+        """Use Google Custom Search to find all URLs from the same domain as base_blog_url (e.g., https://quill.co/*)"""
+        if not self.google_service:
+            print("Google Search API not available. Skipping blog subpage search.")
+            return []
+        # Extract domain for site: operator
+        print(f"Searching for blog subpages of {base_blog_url}")
+        parsed = urlparse(base_blog_url)
+        domain = parsed.netloc
+        print(f"Domain: {domain}")
+        # Build query: site:domain
+        query = f"site:{domain}"
+        print(f"Google searching for blog subpages with query: {query}")
+        results = self._google_search2(query, max_results=max_results)
+        # Filter URLs to only those that start with the base_blog_url
+        matching_urls = []
+        # print(f"Results: {results}")
+        for result in results:
+            url = result.get('link')
+            if url:
+                matching_urls.append(url)
+        print(f"Found {len(matching_urls)} blog subpages via Google search.")
+        return list(set(matching_urls)) 

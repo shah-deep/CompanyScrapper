@@ -386,7 +386,7 @@ def crawl_trusted_base_urls_api(
         return {
             'success': True,
             'discovered_urls': list(discovered_urls),
-            'output_file': output_file or 'trusted_base_urls.txt'
+            'output_file': output_file
         }
     except Exception as e:
         return {

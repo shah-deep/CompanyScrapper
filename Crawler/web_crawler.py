@@ -225,7 +225,7 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
         base_urls: List of base URLs to crawl.
         skip_words: List of words to skip in URLs.
         max_pages_per_domain: Max pages to crawl per base URL.
-        output_file: File to save discovered URLs (default: data/scrapped_urls/trusted_base_urls.txt)
+        output_file: File to save discovered URLs (should be provided; if not, do not write to trusted_base_urls.txt)
     Returns:
         Set of all discovered URLs.
     """
@@ -236,15 +236,10 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
     all_discovered_urls = set()
     base_urls = list(set(base_urls))
 
-    # Prepare output file
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    output_dir = os.path.join(project_root, 'data', 'scrapped_urls')
-    os.makedirs(output_dir, exist_ok=True)
+    # Only write to output_file if provided
     if output_file is None:
-        output_file = os.path.join(output_dir, 'trusted_base_urls.txt')
-    else:
-        output_file = os.path.join(output_dir, output_file)
-
+        print("No output_file provided to crawl_trusted_base_urls; skipping file write.")
+    
     def should_skip_url_simple(url, skip_words):
         url_lower = url.lower()
         for skip_word in skip_words:
@@ -272,9 +267,22 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
         visited_urls = set()
         queue = deque([base_url])
         found_urls = set()
+        is_blog_root = base_url.rstrip('/')
+        # Supplement with Google search if blog root
+        google_blog_urls = set()
+        
+        try:
+            from .blog_discovery import BlogDiscovery
+            blog_discovery = BlogDiscovery()
+            google_blog_urls = set(blog_discovery.search_blog_subpages(base_url, max_results=30))
+            print(f"Adding {len(google_blog_urls)} Google-discovered blog subpages to crawl queue.")
+            for url in google_blog_urls:
+                if url not in visited_urls:
+                    queue.append(url)
+        except Exception as e:
+            print(f"Error using Google search for blog subpages: {e}")
         while queue and len(found_urls) < max_pages_per_domain:
             current_url = queue.popleft()
-            # Use the standalone _normalize_url function if available, otherwise define it here
             def normalize_url(url: str) -> str:
                 if not url:
                     return url
@@ -308,7 +316,6 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
                 soup = BeautifulSoup(response.content, 'html.parser')
                 links = []
                 for link in soup.find_all('a', href=True):
-                    # Defensive: Only get href if link is a Tag (not NavigableString/PageElement)
                     from bs4 import Tag
                     if isinstance(link, Tag):
                         href = link.get('href', '')
@@ -319,7 +326,12 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
                         absolute_url, _ = urldefrag(absolute_url)
                         if is_valid_url(absolute_url):
                             if not should_skip_url_simple(absolute_url, skip_words):
-                                links.append(absolute_url)
+                                # If this is a blog root, only follow links under the blog root
+                                if is_blog_root:
+                                    if absolute_url.startswith(base_url.rstrip('/')):
+                                        links.append(absolute_url)
+                                else:
+                                    links.append(absolute_url)
                 found_urls.add(current_url)
                 for link in links:
                     normalized_link = normalize_url(link)
@@ -333,9 +345,12 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
                 print(f"Error fetching {current_url}: {str(e)}")
                 continue
         all_discovered_urls.update(found_urls)
-    # Save to file
-    with open(output_file, 'w', encoding='utf-8') as f:
-        for url in sorted(all_discovered_urls):
-            f.write(url + '\n')
-    print(f"Trusted base URLs crawl complete. {len(all_discovered_urls)} unique URLs saved to {output_file}")
+    # Save to file only if output_file is provided
+    if output_file is not None:
+        with open(output_file, 'a', encoding='utf-8') as f:
+            for url in sorted(all_discovered_urls):
+                f.write(url + '\n')
+        print(f"Trusted base URLs crawl complete. {len(all_discovered_urls)} unique URLs appended to {output_file}")
+    else:
+        print(f"Trusted base URLs crawl complete. {len(all_discovered_urls)} unique URLs discovered (no file written)")
     return all_discovered_urls 
