@@ -76,13 +76,14 @@ Examples:
         print("=" * 80)
         print("TRUSTED BASE URL CRAWLER")
         print("=" * 80)
-        print(f"Base URLs: {', '.join(args.urls)}")
+        base_urls_for_crawl = args.urls if args.urls else [args.url]
+        print(f"Base URLs: {', '.join(base_urls_for_crawl)}")
         print(f"Max pages per domain: {args.max_pages}")
         if args.skip_words:
             print(f"Skip words: {', '.join(args.skip_words)}")
         print("=" * 80)
         result = crawl_trusted_base_urls_api(
-            base_urls=args.urls,
+            base_urls=base_urls_for_crawl,
             skip_words=args.skip_words,
             max_pages_per_domain=args.max_pages,
             output_file=args.output
