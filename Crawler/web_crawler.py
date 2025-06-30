@@ -275,7 +275,9 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
             from .blog_discovery import BlogDiscovery
             blog_discovery = BlogDiscovery()
             google_blog_urls = set(blog_discovery.search_blog_subpages(base_url, max_results=30))
-            print(f"Adding {len(google_blog_urls)} Google-discovered blog subpages to crawl queue.")
+            # Always include the homepage URL itself
+            google_blog_urls.add(base_url)
+            print(f"Adding {len(google_blog_urls)} Google-discovered blog subpages (including homepage) to crawl queue.")
             for url in google_blog_urls:
                 if url not in visited_urls:
                     queue.append(url)
