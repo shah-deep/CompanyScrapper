@@ -396,7 +396,7 @@ class BlogDiscovery:
             return False
     
     def search_blog_subpages(self, base_blog_url, max_results=10):
-        """Use Google Custom Search to find all URLs from the same domain as base_blog_url (e.g., https://quill.co/*)"""
+        """Use Google Custom Search to find all URLs from the same domain as base_blog_url"""
         if not self.google_service:
             print("Google Search API not available. Skipping blog subpage search.")
             return []
@@ -406,7 +406,7 @@ class BlogDiscovery:
         domain = parsed.netloc
         print(f"Domain: {domain}")
         # Build query: site:domain
-        query = f"site:{domain}"
+        query = f"site:{domain} blog podcast post"
         print(f"Google searching for blog subpages with query: {query}")
         results = self._google_search2(query, max_results=max_results)
         # Filter URLs to only those that start with the base_blog_url
