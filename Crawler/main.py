@@ -42,28 +42,57 @@ Examples:
   python main.py https://startup.com --max-pages 100
   python main.py https://company.com --output my_company_urls.txt
   python main.py https://company.com --skip-words reddit facebook twitter
+  python main.py trusted-base-urls --urls https://blog.example.com https://news.example.com --output trusted_urls.txt
         """
     )
-    
-    parser.add_argument('url', help='Company homepage URL to analyze')
-    parser.add_argument('--max-pages', type=int, default=50, 
-                       help='Maximum pages to crawl on company website (default: 50)')
-    parser.add_argument('--output', help='Output filename for URL list')
-    parser.add_argument('--skip-external', action='store_true',
-                       help='Skip external mentions search (requires Google API)')
-    parser.add_argument('--skip-founder-blogs', action='store_true',
-                       help='Skip founder blog search (requires Google API)')
-    parser.add_argument('--skip-founder-search', action='store_true',
-                       help='Skip founder discovery search (requires Google API)')
-    parser.add_argument('--simple', action='store_true',
-                       help='Generate simple URL list only')
-    parser.add_argument('--json', action='store_true',
-                       help='Generate JSON report')
-    parser.add_argument('--skip-words', nargs='+', default=[],
-                       help='Additional words to skip in URLs (e.g., --skip-words reddit facebook)')
-    
+    subparsers = parser.add_subparsers(dest='command')
+
+    # Default company crawl parser
+    crawl_parser = subparsers.add_parser('crawl', help='Crawl a company website (default)')
+    crawl_parser.add_argument('url', help='Company homepage URL to analyze')
+    crawl_parser.add_argument('--max-pages', type=int, default=50, help='Maximum pages to crawl on company website (default: 50)')
+    crawl_parser.add_argument('--output', help='Output filename for URL list')
+    crawl_parser.add_argument('--skip-external', action='store_true', help='Skip external mentions search (requires Google API)')
+    crawl_parser.add_argument('--skip-founder-blogs', action='store_true', help='Skip founder blog search (requires Google API)')
+    crawl_parser.add_argument('--skip-founder-search', action='store_true', help='Skip founder discovery search (requires Google API)')
+    crawl_parser.add_argument('--simple', action='store_true', help='Generate simple URL list only')
+    crawl_parser.add_argument('--json', action='store_true', help='Generate JSON report')
+    crawl_parser.add_argument('--skip-words', nargs='+', default=[], help='Additional words to skip in URLs (e.g., --skip-words reddit facebook)')
+
+    # Trusted base URLs parser
+    trusted_parser = subparsers.add_parser('trusted-base-urls', help='Crawl all subpages for trusted base URLs')
+    trusted_parser.add_argument('--urls', nargs='+', required=True, help='List of trusted base URLs to crawl')
+    trusted_parser.add_argument('--skip-words', nargs='+', default=[], help='Words to skip in URLs')
+    trusted_parser.add_argument('--max-pages', type=int, default=50, help='Maximum pages to crawl per base URL')
+    trusted_parser.add_argument('--output', help='Output filename for discovered URLs')
+
+    # If no subcommand, default to crawl
     args = parser.parse_args()
-    
+    if args.command is None:
+        args = parser.parse_args(['crawl'] + [a for a in vars(args).values() if isinstance(a, str)])
+
+    if args.command == 'trusted-base-urls':
+        from .crawler_api import crawl_trusted_base_urls_api
+        print("=" * 80)
+        print("TRUSTED BASE URL CRAWLER")
+        print("=" * 80)
+        print(f"Base URLs: {', '.join(args.urls)}")
+        print(f"Max pages per domain: {args.max_pages}")
+        if args.skip_words:
+            print(f"Skip words: {', '.join(args.skip_words)}")
+        print("=" * 80)
+        result = crawl_trusted_base_urls_api(
+            base_urls=args.urls,
+            skip_words=args.skip_words,
+            max_pages_per_domain=args.max_pages,
+            output_file=args.output
+        )
+        if result['success']:
+            print(f"\nCrawl complete. {len(result['discovered_urls'])} unique URLs saved to {result['output_file']}")
+        else:
+            print(f"\nError: {result.get('error')}")
+        return
+
     # Validate URL
     if not validate_url(args.url):
         print("Error: Invalid URL provided")

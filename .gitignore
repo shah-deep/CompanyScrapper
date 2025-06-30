@@ -68,3 +68,4 @@ logs/
 ./data
 data
 data/*
+data/scrapped_urls/aline123.txt

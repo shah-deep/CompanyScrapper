@@ -7,6 +7,7 @@ from collections import deque
 import random
 from .config import USER_AGENTS, BLOG_KEYWORDS, MAX_PAGES_PER_DOMAIN, REQUEST_DELAY, TIMEOUT, SKIP_URL_WORDS
 import validators
+import os
 
 class WebCrawler:
     def __init__(self, custom_skip_words=None):
@@ -215,4 +216,141 @@ class WebCrawler:
             time.sleep(REQUEST_DELAY)
         
         print(f"Crawl completed. Found {len(self.found_urls)} pages and {len(self.blog_urls)} blog posts.")
-        return self.found_urls, self.blog_urls 
+        return self.found_urls, self.blog_urls
+
+def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50, output_file=None):
+    """
+    Crawl all unique subpages for each trusted base URL, applying skip word filtering only.
+    Args:
+        base_urls: List of base URLs to crawl.
+        skip_words: List of words to skip in URLs.
+        max_pages_per_domain: Max pages to crawl per base URL.
+        output_file: File to save discovered URLs (should be provided; if not, do not write to trusted_base_urls.txt)
+    Returns:
+        Set of all discovered URLs.
+    """
+    if skip_words is None:
+        from .config import SKIP_URL_WORDS
+        skip_words = SKIP_URL_WORDS
+
+    all_discovered_urls = set()
+    base_urls = list(set(base_urls))
+
+    # Only write to output_file if provided
+    if output_file is None:
+        print("No output_file provided to crawl_trusted_base_urls; skipping file write.")
+    
+    def should_skip_url_simple(url, skip_words):
+        url_lower = url.lower()
+        for skip_word in skip_words:
+            if skip_word.lower() in url_lower:
+                return True
+        return False
+
+    def is_same_domain(url, base_url):
+        try:
+            base_domain = urlparse(base_url).netloc
+            url_domain = urlparse(url).netloc
+            return base_domain == url_domain
+        except:
+            return False
+
+    def is_valid_url(url):
+        try:
+            import validators
+            return validators.url(url) and not url.startswith(('mailto:', 'tel:', 'javascript:'))
+        except:
+            return False
+
+    for base_url in base_urls:
+        print(f"Crawling trusted base URL: {base_url}")
+        visited_urls = set()
+        queue = deque([base_url])
+        found_urls = set()
+        is_blog_root = base_url.rstrip('/')
+        # Supplement with Google search if blog root
+        google_blog_urls = set()
+        
+        try:
+            from .blog_discovery import BlogDiscovery
+            blog_discovery = BlogDiscovery()
+            google_blog_urls = set(blog_discovery.search_blog_subpages(base_url, max_results=30))
+            print(f"Adding {len(google_blog_urls)} Google-discovered blog subpages to crawl queue.")
+            for url in google_blog_urls:
+                if url not in visited_urls:
+                    queue.append(url)
+        except Exception as e:
+            print(f"Error using Google search for blog subpages: {e}")
+        while queue and len(found_urls) < max_pages_per_domain:
+            current_url = queue.popleft()
+            def normalize_url(url: str) -> str:
+                if not url:
+                    return url
+                parsed = urlparse(url)
+                path = parsed.path
+                if path.endswith('/') and len(path) > 1:
+                    path = path.rstrip('/')
+                normalized = f"{parsed.scheme}://{parsed.netloc}{path}"
+                if parsed.query:
+                    normalized += f"?{parsed.query}"
+                if parsed.fragment:
+                    normalized += f"#{parsed.fragment}"
+                return normalized
+
+            normalized_current_url = normalize_url(current_url)
+            if normalized_current_url in visited_urls:
+                continue
+            visited_urls.add(normalized_current_url)
+            if not is_same_domain(current_url, base_url):
+                continue
+            try:
+                headers = {
+                    'User-Agent': random.choice(USER_AGENTS),
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive',
+                }
+                response = requests.get(current_url, headers=headers, timeout=TIMEOUT)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.content, 'html.parser')
+                links = []
+                for link in soup.find_all('a', href=True):
+                    from bs4 import Tag
+                    if isinstance(link, Tag):
+                        href = link.get('href', '')
+                    else:
+                        href = ''
+                    if href and isinstance(href, str):
+                        absolute_url = urljoin(current_url, href)
+                        absolute_url, _ = urldefrag(absolute_url)
+                        if is_valid_url(absolute_url):
+                            if not should_skip_url_simple(absolute_url, skip_words):
+                                # If this is a blog root, only follow links under the blog root
+                                if is_blog_root:
+                                    if absolute_url.startswith(base_url.rstrip('/')):
+                                        links.append(absolute_url)
+                                else:
+                                    links.append(absolute_url)
+                found_urls.add(current_url)
+                for link in links:
+                    normalized_link = normalize_url(link)
+                    if (normalized_link not in visited_urls and
+                        normalized_link not in queue and
+                        is_same_domain(link, base_url) and
+                        len(found_urls) < max_pages_per_domain):
+                        queue.append(link)
+                time.sleep(REQUEST_DELAY)
+            except Exception as e:
+                print(f"Error fetching {current_url}: {str(e)}")
+                continue
+        all_discovered_urls.update(found_urls)
+    # Save to file only if output_file is provided
+    if output_file is not None:
+        with open(output_file, 'a', encoding='utf-8') as f:
+            for url in sorted(all_discovered_urls):
+                f.write(url + '\n')
+        print(f"Trusted base URLs crawl complete. {len(all_discovered_urls)} unique URLs appended to {output_file}")
+    else:
+        print(f"Trusted base URLs crawl complete. {len(all_discovered_urls)} unique URLs discovered (no file written)")
+    return all_discovered_urls 
