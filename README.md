@@ -19,7 +19,7 @@ A modern application to discover, crawl, and extract structured knowledge from c
 You can check existing data for the following team IDs:
 
 - `aline123`
-- `quill123`
+- `groove123`
 
 ## How to Run (Web UI)
 1. Install dependencies:
