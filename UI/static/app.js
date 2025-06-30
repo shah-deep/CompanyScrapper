@@ -104,13 +104,30 @@ const UIState = {
 // ============================================================================
 const Utils = {
     showAlert(message, type = 'info') {
+        console.log('showAlert called with:', message, type);
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
         alertDiv.innerHTML = `
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
-        document.querySelector('.tab-content').insertBefore(alertDiv, document.querySelector('.form-section'));
+        
+        // Find the active tab content
+        const activeTab = document.querySelector('.tab-pane.active');
+        if (activeTab) {
+            // Insert at the beginning of the active tab
+            activeTab.insertBefore(alertDiv, activeTab.firstChild);
+            console.log('Alert inserted successfully in active tab');
+        } else {
+            // Fallback: insert at the top of the page
+            const mainContainer = document.querySelector('.main-container');
+            if (mainContainer) {
+                mainContainer.insertBefore(alertDiv, mainContainer.firstChild);
+                console.log('Alert inserted successfully in main container');
+            } else {
+                console.error('Could not find suitable location for alert insertion');
+            }
+        }
         
         setTimeout(() => {
             alertDiv.remove();
@@ -287,6 +304,8 @@ const ButtonHandlers = {
     // Get URLs button
     handleGetUrls() {
         const teamId = document.getElementById('dataTeamId').value.trim().toLowerCase();
+        console.log('Get URLs clicked for team ID:', teamId);
+        
         if (!Validation.validateTeamId(teamId)) {
             Utils.showAlert('Please enter a valid Team ID (letters, numbers, underscores, and dashes only)', 'warning');
             return;
@@ -298,12 +317,21 @@ const ButtonHandlers = {
         fetch(`/api/urls/${teamId}`)
             .then(response => response.json())
             .then(data => {
+                console.log('Get URLs response:', data);
                 if (data.success) {
                     document.getElementById('urlsSection').style.display = 'block';
                     document.getElementById('urlsContent').textContent = data.content;
                     Utils.showAlert(`Retrieved ${data.url_count} URLs from file`, 'success');
                 } else {
-                    Utils.showAlert(data.error, 'warning');
+                    // Check if it's a "no data found" error
+                    console.log('Error message:', data.error);
+                    if (data.error && data.error.includes('No URL file found')) {
+                        console.log('Showing "No data was found" alert');
+                        Utils.showAlert('No data was found for this Team ID', 'warning');
+                    } else {
+                        console.log('Showing original error alert');
+                        Utils.showAlert(data.error, 'warning');
+                    }
                 }
             })
             .catch(error => {
@@ -318,6 +346,8 @@ const ButtonHandlers = {
     // Get Data button
     handleGetData() {
         const teamId = document.getElementById('dataTeamId').value.trim().toLowerCase();
+        console.log('Get Data clicked for team ID:', teamId);
+        
         if (!Validation.validateTeamId(teamId)) {
             Utils.showAlert('Please enter a valid Team ID (letters, numbers, underscores, and dashes only)', 'warning');
             return;
@@ -329,12 +359,21 @@ const ButtonHandlers = {
         fetch(`/api/data/${teamId}`)
             .then(response => response.json())
             .then(data => {
+                console.log('Get Data response:', data);
                 if (data.success) {
                     document.getElementById('dataSection').style.display = 'block';
                     document.getElementById('dataContent').textContent = JSON.stringify(data.data, null, 2);
                     Utils.showAlert(`Retrieved ${data.data.total_items} knowledge items`, 'success');
                 } else {
-                    Utils.showAlert(data.error, 'warning');
+                    // Check if it's a "no data found" error
+                    console.log('Error message:', data.error);
+                    if (data.error && data.error.includes('No knowledge data found')) {
+                        console.log('Showing "No data was found" alert');
+                        Utils.showAlert('No data was found for this Team ID', 'warning');
+                    } else {
+                        console.log('Showing original error alert');
+                        Utils.showAlert(data.error, 'warning');
+                    }
                 }
             })
             .catch(error => {
