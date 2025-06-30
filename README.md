@@ -23,17 +23,6 @@ You can check existing data for the following team IDs:
 - `aline123`
 - `groove123`
 
-## How to Run (Web UI)
-
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Start the UI:
-   ```bash
-   python UI/run_ui.py
-   ```
-3. Open [http://localhost:5000](http://localhost:5000) in your browser.
 
 ## Demo: Example Run
 
@@ -48,6 +37,8 @@ Follow these steps for a typical workflow using the web UI:
    - Enter the same team ID (`numeric20`).
    - Ensure **Iterative Subdirectory Discovery** is turned **on**.
    - ![Step 2: Add team ID in Scrapper and enable Iterative Subdirectory Discovery](demo/2.png)
+   - **Note:** This process may take a long time, as the scrapper will visit and extract data from many web pages.
+
 3. **Return to Crawler and Enable External URL Search**
 
    - Turn **off** the "Skip external URL search" option.
@@ -57,11 +48,37 @@ Follow these steps for a typical workflow using the web UI:
 
    - In Scrapper, turn **off** the **Iterative Subdirectory Discovery** option and start the scrape.
    - ![Step 4: Turn off Iterative Subdirectory Discovery in Scrapper and start](demo/4.png)
+   - **Note:** This process may take a long time, as the scrapper will visit and extract data from many web pages.
+   
+5. **This step will yield nearly all the detailed technical information available about the company.**
 
 ---
 
-Replace `<image>` placeholders with actual screenshots for a visual walkthrough.
+## How to Run (Web UI)
+
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Start the UI:
+   ```bash
+   python UI/run_ui.py
+   ```
+3. Open [http://localhost:5000](http://localhost:5000) in your browser.
+
 
 ## Environment Variables (.env)
 
-Create a `.env`
+Create a `.env` file in the root directory with the following variables:
+
+```env
+GOOGLE_API_KEY=your_google_api_key_here
+GOOGLE_CSE_ID=your_google_custom_search_engine_id_here
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.0-flash-lite
+
+# MongoDB Configuration
+MONGODB_URI=mongodb+srv://sh.2uayc9a.mongodb.net/
+MONGODB_DATABASE=your_database_name_here
+MONGODB_COLLECTION=your_collection_name_here
+```
