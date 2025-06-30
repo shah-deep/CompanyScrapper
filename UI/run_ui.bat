@@ -1,5 +1,5 @@
 @echo off
-echo 🏢 Company Crawler & Scrapper UI
+echo 🏢 Company Crawler & Scrapper UI - Flask Version
 echo ================================================
 echo.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launcher script for the Company Crawler & Scrapper UI
+Launcher script for the Company Crawler & Scrapper UI - Flask Version
 """
 
 import sys
@@ -9,13 +9,13 @@ import subprocess
 from pathlib import Path
 
 def main():
-    """Launch the Streamlit UI application"""
+    """Launch the Flask UI application"""
     
     # Get the script directory (UI directory)
     script_dir = Path(__file__).parent.absolute()
     project_root = script_dir.parent
     
-    print("🏢 Company Crawler & Scrapper UI")
+    print("🏢 Company Crawler & Scrapper UI - Flask Version")
     print("=" * 50)
     
     # Check if we're in the right directory structure
@@ -25,12 +25,19 @@ def main():
         print("   Please ensure the UI directory contains app.py")
         sys.exit(1)
     
+    # Check if templates directory exists
+    templates_dir = script_dir / "templates"
+    if not templates_dir.exists():
+        print("❌ Error: templates directory not found")
+        print(f"   Expected: {templates_dir}")
+        print("   Please ensure the templates directory exists with index.html")
+        sys.exit(1)
+    
     # Check if requirements are installed
     print("📦 Checking dependencies...")
     try:
-        import streamlit
-        import pandas
-        import plotly
+        import flask
+        import requests
         print("✅ All dependencies are installed")
     except ImportError as e:
         print(f"❌ Missing dependency: {e}")
@@ -52,19 +59,17 @@ def main():
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     
-    print("🚀 Starting Streamlit application...")
+    print("🚀 Starting Flask application...")
     print("   The UI will open in your default browser")
-    print("   If it doesn't open automatically, go to: http://localhost:9501")
+    print("   If it doesn't open automatically, go to: http://localhost:5000")
     print("   Press Ctrl+C to stop the application")
     print("-" * 50)
     
-    # Change to UI directory and run the Streamlit app
+    # Change to UI directory and run the Flask app
     try:
         os.chdir(script_dir)
         subprocess.run([
-            sys.executable, "-m", "streamlit", "run", "app.py",
-            "--server.port", "9501",
-            "--server.address", "localhost"
+            sys.executable, "app.py"
         ])
     except KeyboardInterrupt:
         print("\n👋 Application stopped by user")
