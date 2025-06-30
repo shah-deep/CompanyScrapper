@@ -58,10 +58,7 @@ const Validation = {
     },
 
     validateDeleteButtons() {
-        const crawlerTeamId = document.getElementById('teamId').value.trim().toLowerCase();
         const dataTeamId = document.getElementById('dataTeamId').value.trim().toLowerCase();
-        
-        document.getElementById('deleteUrlsBtn').disabled = !this.validateTeamId(crawlerTeamId);
         document.getElementById('deleteUrlsDataBtn').disabled = !this.validateTeamId(dataTeamId);
     },
 
@@ -441,39 +438,7 @@ const ButtonHandlers = {
         }
     },
 
-    // Delete buttons
-    handleDeleteUrls() {
-        const teamId = document.getElementById('teamId').value.trim().toLowerCase();
-        if (Validation.validateTeamId(teamId)) {
-            if (confirm(`Are you sure you want to delete all files for team "${teamId}"? This action cannot be undone.`)) {
-                // Disable button during request
-                document.getElementById('deleteUrlsBtn').disabled = true;
-
-                fetch(`/api/delete/${teamId}`, {
-                    method: 'DELETE'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        Utils.showAlert(`Successfully deleted: ${data.deleted_files.join(', ')}`, 'success');
-                        // Clear the URL file content display
-                        document.getElementById('urlFileContent').innerHTML = '';
-                        document.getElementById('crawlerResults').style.display = 'none';
-                    } else {
-                        Utils.showAlert('Delete failed: ' + data.error, 'danger');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    Utils.showAlert('Error deleting files', 'danger');
-                })
-                .finally(() => {
-                    Validation.validateDeleteButtons(); // Re-enable button if valid
-                });
-            }
-        }
-    },
-
+    // Delete button
     handleDeleteUrlsData() {
         const teamId = document.getElementById('dataTeamId').value.trim().toLowerCase();
         if (Validation.validateTeamId(teamId)) {
@@ -603,7 +568,6 @@ const EventListeners = {
         document.getElementById('downloadUrlsBtn').addEventListener('click', ButtonHandlers.handleDownloadUrls);
         document.getElementById('downloadUrlsDataBtn').addEventListener('click', ButtonHandlers.handleDownloadUrlsData);
         document.getElementById('refreshUrlsBtn').addEventListener('click', ButtonHandlers.handleRefreshUrls);
-        document.getElementById('deleteUrlsBtn').addEventListener('click', ButtonHandlers.handleDeleteUrls);
         document.getElementById('deleteUrlsDataBtn').addEventListener('click', ButtonHandlers.handleDeleteUrlsData);
 
         // Form field listeners for validation
@@ -617,7 +581,6 @@ const EventListeners = {
             e.target.value = e.target.value.toLowerCase();
             Validation.validateCrawlerForm();
             Validation.validateDownloadButtons();
-            Validation.validateDeleteButtons();
             Validation.validateRefreshButton();
         });
 

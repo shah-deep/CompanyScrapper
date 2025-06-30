@@ -53,22 +53,6 @@ Follow these steps for a typical workflow using the web UI:
    
 5. **This step will yield nearly all the detailed technical information available about the company.**
 
-## File Management
-
-The application creates two types of files for each team:
-- **Main URL file**: `{team_id}.txt` - Contains the discovered URLs
-- **Subpage file**: `{team_id}_subpage.txt` - Contains additional subpages discovered during iterative processing
-
-### Deleting Files
-
-To delete both files for a team:
-1. Go to the **Crawler** or **Check Data** tab
-2. Enter the team ID in the respective field
-3. Click the **Delete Files** button (red trash icon)
-4. Confirm the deletion when prompted
-
-**Note**: This action permanently deletes both the main URL file and its corresponding subpage file. This action cannot be undone.
-
 ---
 
 ## How to Run (Web UI)
