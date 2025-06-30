@@ -320,7 +320,10 @@ const ButtonHandlers = {
                 console.log('Get URLs response:', data);
                 if (data.success) {
                     document.getElementById('urlsSection').style.display = 'block';
-                    document.getElementById('urlsContent').textContent = data.content;
+                    // Render URLs as a list for better readability
+                    const urlsContent = document.getElementById('urlsContent');
+                    const urls = (data.content || '').split(/\r?\n|,|\s+/).filter(Boolean);
+                    urlsContent.innerHTML = urls.map(url => `<div>${url}</div>`).join('');
                     Utils.showAlert(`Retrieved ${data.url_count} URLs from file`, 'success');
                 } else {
                     // Check if it's a "no data found" error
@@ -362,7 +365,8 @@ const ButtonHandlers = {
                 console.log('Get Data response:', data);
                 if (data.success) {
                     document.getElementById('dataSection').style.display = 'block';
-                    document.getElementById('dataContent').textContent = JSON.stringify(data.data, null, 2);
+                    // Use jsonview jQuery plugin for interactive JSON display
+                    $('#dataContent').empty().JSONView(data.data, { collapsed: true });
                     Utils.showAlert(`Retrieved ${data.data.total_items} knowledge items`, 'success');
                 } else {
                     // Check if it's a "no data found" error
@@ -411,7 +415,10 @@ const ButtonHandlers = {
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        document.getElementById('urlFileContent').textContent = data.content;
+                        // Render URLs as a list for better readability
+                        const urlFileContent = document.getElementById('urlFileContent');
+                        const urls = (data.content || '').split(/\r?\n|,|\s+/).filter(Boolean);
+                        urlFileContent.innerHTML = urls.map(url => `<div>${url}</div>`).join('');
                         Utils.showAlert('URL file refreshed', 'success');
                     }
                 })
@@ -461,7 +468,10 @@ const ResultsDisplay = {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    document.getElementById('urlFileContent').textContent = data.content;
+                    // Render URLs as a list for better readability
+                    const urlFileContent = document.getElementById('urlFileContent');
+                    const urls = (data.content || '').split(/\r?\n|,|\s+/).filter(Boolean);
+                    urlFileContent.innerHTML = urls.map(url => `<div>${url}</div>`).join('');
                 }
             });
     },
@@ -562,7 +572,8 @@ const EventListeners = {
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
-document.addEventListener('DOMContentLoaded', function() {
+// Wrap all event listeners and $ usage in a DOM-ready handler
+$(function() {
     EventListeners.initialize();
 
     // Initialize tooltips
