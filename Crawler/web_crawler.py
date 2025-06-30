@@ -8,6 +8,7 @@ import random
 from .config import USER_AGENTS, BLOG_KEYWORDS, MAX_PAGES_PER_DOMAIN, REQUEST_DELAY, TIMEOUT, SKIP_URL_WORDS
 import validators
 import os
+from .blog_discovery import BlogDiscovery
 
 class WebCrawler:
     def __init__(self, custom_skip_words=None):
@@ -283,11 +284,10 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
         google_blog_urls = set()
         
         try:
-            from .blog_discovery import BlogDiscovery
             blog_discovery = BlogDiscovery()
             google_blog_urls = set(blog_discovery.search_blog_subpages(base_url, max_results=30))
             # Always include the homepage URL itself
-            print(f"Google-discovered blog subpages: {google_blog_urls}")
+            # print(f"Google-discovered blog subpages: {google_blog_urls}")
             print(f"Adding {len(google_blog_urls)} Google-discovered blog subpages (including homepage) to crawl queue.")
             for url in google_blog_urls:
                 if url not in visited_urls:
