@@ -7,6 +7,8 @@ import sys
 import os
 import subprocess
 from pathlib import Path
+import flask
+import requests
 
 def main():
     """Launch the Flask UI application"""
@@ -36,8 +38,8 @@ def main():
     # Check if requirements are installed
     print("📦 Checking dependencies...")
     try:
-        import flask
-        import requests
+        # import flask
+        # import requests
         print("✅ All dependencies are installed")
     except ImportError as e:
         print(f"❌ Missing dependency: {e}")
