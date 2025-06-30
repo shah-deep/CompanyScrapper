@@ -670,7 +670,7 @@ class KnowledgeScraper:
                     
         except Exception as e:
             self.logger.error(f"Error retrieving team knowledge: {e}")
-            return None
+        return None
     
     def search_knowledge(self, query: str) -> List[Dict[str, Any]]:
         """Search knowledge within the team."""
@@ -701,7 +701,7 @@ class KnowledgeScraper:
                     
         except Exception as e:
             self.logger.error(f"Error searching knowledge: {e}")
-            return []
+        return []
     
     def get_statistics(self) -> Dict[str, Any]:
         """Get processing statistics."""

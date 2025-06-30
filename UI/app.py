@@ -106,6 +106,7 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
                         skip_founder_blogs: bool, skip_founder_search: bool, skip_words: list):
     """Worker function for crawling company in a separate thread"""
     try:
+        team_id = team_id.lower()
         active_tasks[task_id] = {
             'status': 'running',
             'progress': 'Starting company crawling...',
@@ -131,7 +132,7 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
             'progress': 'Crawling completed successfully!' if result['success'] else f'Crawling failed: {result.get("error", "Unknown error")}',
             'result': result
         }
-        
+            
     except Exception as e:
         active_tasks[task_id] = {
             'status': 'failed',
@@ -145,6 +146,7 @@ def scrape_company_worker(task_id: str, team_id: str, user_id: str, additional_u
                          processing_mode: str):
     """Worker function for scraping company in a separate thread"""
     try:
+        team_id = team_id.lower()
         active_tasks[task_id] = {
             'status': 'running',
             'progress': 'Starting knowledge scraping...',
@@ -180,7 +182,7 @@ def scrape_company_worker(task_id: str, team_id: str, user_id: str, additional_u
             'progress': 'Scraping completed successfully!' if result['success'] else f'Scraping failed: {result.get("error", "Unknown error")}',
             'result': result
         }
-        
+            
     except Exception as e:
         active_tasks[task_id] = {
             'status': 'failed',
@@ -203,7 +205,7 @@ def start_crawl():
         
         # Validate required fields
         company_url = data.get('company_url', '').strip()
-        team_id = data.get('team_id', '').strip()
+        team_id = data.get('team_id', '').strip().lower()
         
         if not validate_url(company_url):
             return jsonify({'success': False, 'error': 'Invalid company URL'}), 400
@@ -250,7 +252,7 @@ def start_scrape():
         data = request.get_json()
         
         # Validate required fields
-        team_id = data.get('team_id', '').strip()
+        team_id = data.get('team_id', '').strip().lower()
         
         if not team_id:
             return jsonify({'success': False, 'error': 'Team ID is required'}), 400
@@ -300,6 +302,7 @@ def get_task_status(task_id):
 def get_urls(team_id):
     """Get URL file contents for a team"""
     try:
+        team_id = team_id.lower()
         file_content = read_url_file_content(team_id)
         file_path = get_url_file_path(team_id)
         
@@ -328,6 +331,7 @@ def get_urls(team_id):
 def get_data(team_id):
     """Get scraped data for a team"""
     try:
+        team_id = team_id.lower()
         result = get_company_knowledge(team_id=team_id)
         
         if result['success']:
@@ -380,6 +384,7 @@ def get_data(team_id):
 def download_urls(team_id):
     """Download URL file"""
     try:
+        team_id = team_id.lower()
         file_path = get_url_file_path(team_id)
         
         if file_path and os.path.exists(file_path):

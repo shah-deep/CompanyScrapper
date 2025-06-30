@@ -105,13 +105,13 @@ class LLMProcessor:
             
             # Create item with conditional user_id
             item = {
-                "title": title,
-                "content": cleaned_content,
-                "full_content": cleaned_fullcontent,
-                "content_type": content_type,
-                "source_url": url,
-                "author": author
-            }
+                        "title": title,
+                        "content": cleaned_content,
+                        "full_content": cleaned_fullcontent,
+                        "content_type": content_type,
+                        "source_url": url,
+                        "author": author
+                    }
             
             # Add user_id to item if provided
             if user_id and user_id.strip():
@@ -412,13 +412,13 @@ class LLMProcessor:
                         
                         # Create item with conditional user_id
                         item = {
-                            "title": final_title,
-                            "content": cleaned_content,
-                            "full_content": cleaned_fullcontent,
-                            "content_type": final_content_type,
-                            "source_url": url,
-                            "author": final_author
-                        }
+                                    "title": final_title,
+                                    "content": cleaned_content,
+                                    "full_content": cleaned_fullcontent,
+                                    "content_type": final_content_type,
+                                    "source_url": url,
+                                    "author": final_author
+                                }
                         
                         # Add user_id to item if provided
                         if user_id and user_id.strip():
@@ -448,12 +448,12 @@ class LLMProcessor:
             
             # Create item with conditional user_id
             item = {
-                "title": fallback_title,
-                "content": markdown_content,
-                "content_type": content_type,
-                "source_url": url,
-                "author": author
-            }
+                        "title": fallback_title,
+                        "content": markdown_content,
+                        "content_type": content_type,
+                        "source_url": url,
+                        "author": author
+                    }
             
             # Add user_id to item if provided
             if user_id and user_id.strip():
