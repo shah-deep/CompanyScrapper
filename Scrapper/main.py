@@ -106,6 +106,10 @@ class KnowledgeScraper:
         """Clean up based on processing mode."""
         if self.processing_mode == "multiprocessing" and self.process_pool:
             self.process_pool.close()
+            self.process_pool.join()
+        
+        # Clean up shared database connection pool
+        DatabaseHandler.close_connection_pool()
     
     async def __aenter__(self):
         """Initialize async components."""
@@ -132,6 +136,9 @@ class KnowledgeScraper:
                 await self.content_extractor.__aexit__(exc_type, exc_val, exc_tb)
             if self.db_handler:
                 await self.db_handler.disconnect()
+        
+        # Clean up shared database connection pool
+        DatabaseHandler.close_connection_pool()
     
     def _get_subpage_file_path(self, original_file_path: str) -> str:
         """Generate subpage file path based on original file path."""
@@ -469,15 +476,18 @@ class KnowledgeScraper:
         if not self.process_pool:
             raise RuntimeError("Process pool not initialized")
         iteration_discovered_urls = set()
-        future_to_url = {}
-        # multiprocessing.Pool.apply_async returns AsyncResult, which has .get()
+        
+        # Submit all URLs to process pool
+        futures = []
         for url in urls:
             future = self.process_pool.apply_async(
                 process_single_url_worker,
                 args=(url, self.team_id, self.user_id, self.skip_existing_urls)
             )
-            future_to_url[future] = url
-        for future, url in future_to_url.items():
+            futures.append((future, url))
+        
+        # Collect results as they complete (non-blocking parallel collection)
+        for future, url in futures:
             try:
                 result = future.get()  # type: ignore[attr-defined]
                 if result:
@@ -505,6 +515,7 @@ class KnowledgeScraper:
                 self.stats['urls_failed'] += 1
                 self.stats['errors'].append(f"Error processing {url}: {str(e)}")
                 self.logger.info(f"EXCEPTION: {url} - {str(e)}")
+        
         new_discovered = iteration_discovered_urls - processed_urls - set(urls)
         return new_discovered
     
@@ -820,7 +831,7 @@ def process_single_url_worker(url: str, team_id: str, user_id: str, skip_existin
                     asyncio.set_event_loop(loop)
                 
                 try:
-                    # Connect and check if URL exists
+                    # Connect using shared connection pool
                     loop.run_until_complete(db_handler.connect())
                     team_data = loop.run_until_complete(db_handler.get_team_knowledge(team_id))
                     
@@ -829,10 +840,10 @@ def process_single_url_worker(url: str, team_id: str, user_id: str, skip_existin
                         if url in existing_urls:
                             result['skipped'] = True
                             result['error'] = "URL already exists in database"
+                            # Don't disconnect since we're using shared pool
                             return result
                     
-                    # Clean up
-                    loop.run_until_complete(db_handler.disconnect())
+                    # Don't disconnect since we're using shared pool
                     
                 finally:
                     if loop.is_running():
@@ -869,7 +880,7 @@ def process_single_url_worker(url: str, team_id: str, user_id: str, skip_existin
             result['error'] = "Failed to process content with LLM"
             return result
         
-        # Step 5: Save to database
+        # Step 5: Save to database using shared connection pool
         success = db_handler.save_knowledge_item_sync(knowledge_data)
         if success:
             result['knowledge_saved'] = True

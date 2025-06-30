@@ -5,20 +5,54 @@ from pymongo.errors import DuplicateKeyError, ConnectionFailure
 import json
 from datetime import datetime, timezone
 import asyncio
+import threading
 
 from config import Config
 
 class DatabaseHandler:
+    _connection_pool = None
+    _pool_lock = threading.Lock()
+    
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.client: Optional[MongoClient] = None
         self.db = None
         self.collection = None
         
+    @classmethod
+    def get_connection_pool(cls):
+        """Get or create a shared MongoDB connection pool."""
+        if cls._connection_pool is None:
+            with cls._pool_lock:
+                if cls._connection_pool is None:
+                    cls._connection_pool = MongoClient(
+                        Config.MONGODB_URI,
+                        maxPoolSize=50,  # Allow more concurrent connections
+                        minPoolSize=10,  # Keep minimum connections ready
+                        maxIdleTimeMS=30000,  # Close idle connections after 30 seconds
+                        waitQueueTimeoutMS=5000,  # Wait up to 5 seconds for available connection
+                        retryWrites=True,
+                        retryReads=True
+                    )
+                    cls.logger = logging.getLogger(__name__)
+                    cls.logger.info("Created MongoDB connection pool with maxPoolSize=50, minPoolSize=10")
+        return cls._connection_pool
+    
+    @classmethod
+    def close_connection_pool(cls):
+        """Close the shared connection pool."""
+        if cls._connection_pool is not None:
+            with cls._pool_lock:
+                if cls._connection_pool is not None:
+                    cls._connection_pool.close()
+                    cls._connection_pool = None
+                    cls.logger.info("Closed MongoDB connection pool")
+        
     async def connect(self):
-        """Connect to MongoDB Atlas."""
+        """Connect to MongoDB Atlas using connection pool."""
         try:
-            self.client = MongoClient(Config.MONGODB_URI)
+            # Use the shared connection pool
+            self.client = self.get_connection_pool()
             
             # Test the connection
             self.client.admin.command('ping')
@@ -41,10 +75,13 @@ class DatabaseHandler:
             raise
     
     async def disconnect(self):
-        """Disconnect from MongoDB."""
-        if self.client:
-            self.client.close()
-            self.logger.info("Disconnected from MongoDB")
+        """Disconnect from MongoDB (doesn't close shared connection pool)."""
+        # Don't close the client since it's a shared connection pool
+        # The connection pool will be managed separately
+        self.client = None
+        self.db = None
+        self.collection = None
+        self.logger.info("Disconnected from MongoDB (connection pool remains active)")
     
     async def save_knowledge_item(self, knowledge_data: Dict[str, Any]) -> bool:
         """Save a knowledge item to the database."""
@@ -133,15 +170,15 @@ class DatabaseHandler:
             asyncio.set_event_loop(loop)
         
         try:
-            # Create a new database handler and connect
+            # Create a new database handler and connect using shared pool
             temp_handler = DatabaseHandler()
             loop.run_until_complete(temp_handler.connect())
             
             # Run the save operation
             result = loop.run_until_complete(temp_handler.save_knowledge_item(knowledge_data))
             
-            # Clean up connection
-            loop.run_until_complete(temp_handler.disconnect())
+            # Don't disconnect since we're using shared pool
+            # loop.run_until_complete(temp_handler.disconnect())
             
             return result
         finally:
@@ -258,15 +295,15 @@ class DatabaseHandler:
             asyncio.set_event_loop(loop)
         
         try:
-            # Create a new database handler and connect
+            # Create a new database handler and connect using shared pool
             temp_handler = DatabaseHandler()
             loop.run_until_complete(temp_handler.connect())
             
             # Run the statistics operation
             result = loop.run_until_complete(temp_handler.get_statistics())
             
-            # Clean up connection
-            loop.run_until_complete(temp_handler.disconnect())
+            # Don't disconnect since we're using shared pool
+            # loop.run_until_complete(temp_handler.disconnect())
             
             return result
         finally:
