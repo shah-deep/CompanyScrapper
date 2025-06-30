@@ -1,5 +1,7 @@
 # Company Crawler & Scrapper
 
+[![Video Demo](https://img.shields.io/badge/Watch%20Demo-YouTube-red?logo=youtube)](https://youtu.be/o__WmIZd0x8)
+
 A modern application to discover, crawl, and extract structured knowledge from company websites. It provides a user-friendly web interface for extracting company information, discovering related URLs, blogs, and technical content, and organizing the results for further analysis.
 
 ## Features
