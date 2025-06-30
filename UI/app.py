@@ -31,7 +31,7 @@ from Scrapper.scrapper_api import (
 
 # Page configuration
 st.set_page_config(
-    page_title="Company Crawler & Scrapper",
+    page_title="Company Data Crawler & Scrapper",
     page_icon="🏢",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -197,6 +197,53 @@ def scrape_company_worker(company_url: str, team_id: str, user_id: str,
         progress_placeholder.error(f"Scraping failed: {str(e)}")
 
 
+def extract_urls_from_combined_input(text: str) -> tuple[list, str]:
+    """
+    Extract URLs from combined input that may contain:
+    - Line-separated URLs
+    - Comma-separated URLs
+    - Text with embedded URLs
+    
+    Returns:
+        Tuple of (urls_list, remaining_text)
+    """
+    if not text:
+        return [], ""
+    
+    # Split by lines first
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    
+    urls = []
+    remaining_text_parts = []
+    
+    for line in lines:
+        # Check if line contains only URLs (comma-separated or single)
+        if ',' in line:
+            # Handle comma-separated URLs
+            parts = [part.strip() for part in line.split(',')]
+            for part in parts:
+                if validate_url(part):
+                    urls.append(part)
+                else:
+                    remaining_text_parts.append(part)
+        elif validate_url(line):
+            # Single URL on a line
+            urls.append(line)
+        else:
+            # Text content that may contain URLs
+            remaining_text_parts.append(line)
+    
+    # Extract URLs from remaining text using the existing function
+    if remaining_text_parts:
+        remaining_text = '\n'.join(remaining_text_parts)
+        extracted_urls = extract_urls_from_text(remaining_text)
+        urls.extend(extracted_urls)
+    else:
+        remaining_text = ""
+    
+    return urls, remaining_text
+
+
 def main():
     """Main application function"""
     
@@ -211,7 +258,7 @@ def main():
         st.session_state.scrape_result = None
     
     # Header
-    st.markdown('<h1 class="main-header">🏢 Company Crawler & Scrapper</h1>', unsafe_allow_html=True)
+    # st.markdown('<h1 class="main-header">🏢 Company Crawler & Scrapper</h1>', unsafe_allow_html=True)
     
     # Sidebar for navigation
     st.sidebar.title("Navigation")
@@ -231,7 +278,7 @@ def main():
 
 def show_crawler_section():
     """Display the Crawler section"""
-    st.markdown('<h2 class="section-header">🔍 Company Crawler</h2>')
+    st.markdown('<h1 class="main-header">🏢 Crawler</h1>', unsafe_allow_html=True)
     
     # Input form
     with st.form("crawler_form"):
@@ -244,6 +291,20 @@ def show_crawler_section():
                 help="Enter the main website URL of the company you want to crawl"
             )
             
+            skip_words = st.text_area(
+                "Skip Words (one per line)",
+                placeholder="reddit\nlogin\nterms",
+                help="Enter words to skip in URL search, one per line"
+            )
+            
+        
+        with col2:
+            additional_input = st.text_area(
+                "Additional URLs",
+                placeholder="URLs starting with https:// or http://",
+                help="Enter additional URLs (one per line or comma-separated) and/or any text that may contain some URLs"
+            )
+
             max_pages = st.number_input(
                 "Maximum Pages to Crawl",
                 min_value=1,
@@ -258,40 +319,17 @@ def show_crawler_section():
                 help="Skip searching for external mentions of the company"
             )
             
-            skip_founder_blogs = st.checkbox(
-                "Skip Founder Blog Search",
-                value=False,
-                help="Skip searching for founder blog posts"
-            )
-            
-            skip_founder_search = st.checkbox(
-                "Skip Founder Discovery Search",
-                value=False,
-                help="Skip searching for company founders"
-            )
-        
-        with col2:
-            additional_urls = st.text_area(
-                "Additional URLs (one per line)",
-                placeholder="https://blog.example.com/post1\nhttps://docs.example.com/api",
-                help="Enter additional URLs to include in the crawl, one per line"
-            )
-            
-            additional_text = st.text_area(
-                "Additional Text with URLs",
-                placeholder="Check out this article: https://medium.com/example/post",
-                help="Enter text that may contain URLs to extract"
-            )
-            
-            skip_words = st.text_area(
-                "Skip Words (one per line)",
-                placeholder="login\nsignup\nprivacy",
-                help="Enter words to skip in URLs, one per line"
-            )
         
         # Convert text inputs to lists
-        additional_urls_list = [url.strip() for url in additional_urls.split('\n') if url.strip()] if additional_urls else []
+        additional_urls_list, additional_text = extract_urls_from_combined_input(additional_input)
         skip_words_list = [word.strip() for word in skip_words.split('\n') if word.strip()] if skip_words else []
+        
+        # Show extracted URLs for user feedback
+        if additional_urls_list:
+            st.info(f"📋 Extracted {len(additional_urls_list)} URLs from input")
+            with st.expander("View extracted URLs"):
+                for i, url in enumerate(additional_urls_list, 1):
+                    st.write(f"{i}. {url}")
         
         # Submit button
         submit_button = st.form_submit_button(
@@ -310,7 +348,7 @@ def show_crawler_section():
         thread = threading.Thread(
             target=crawl_company_worker,
             args=(company_url, additional_urls_list, additional_text, max_pages, 
-                  skip_external, skip_founder_blogs, skip_founder_search, 
+                  skip_external, False, False, 
                   skip_words_list, progress_placeholder)
         )
         thread.start()
@@ -320,6 +358,7 @@ def show_crawler_section():
             while not st.session_state.crawl_completed:
                 time.sleep(0.1)
                 st.rerun()
+    
     # Display results
     if st.session_state.crawl_result:
         st.markdown("### Results")
@@ -354,8 +393,10 @@ def show_crawler_section():
 
 def show_scrapper_section():
     """Display the Scrapper section"""
-    st.markdown('<h2 class="section-header">📄 Knowledge Scrapper</h2>', unsafe_allow_html=True)
+    # st.markdown('<h2 class="section-header">📄 Knowledge Scrapper</h2>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🏢 Scrapper</h1>', unsafe_allow_html=True)
     
+
     # Input form
     with st.form("scrapper_form"):
         col1, col2 = st.columns(2)
@@ -379,23 +420,18 @@ def show_scrapper_section():
                 help="Enter an optional user identifier"
             )
             
-            processing_mode = st.selectbox(
-                "Processing Mode",
-                ["multiprocessing", "async"],
-                help="Choose the processing mode for scraping"
-            )
+            processing_mode = "multiprocessing"
+            # processing_mode = st.selectbox(
+            #     "Processing Mode",
+            #     ["multiprocessing", "async"],
+            #     help="Choose the processing mode for scraping"
+            # )
         
         with col2:
-            additional_urls = st.text_area(
-                "Additional URLs (one per line)",
-                placeholder="https://blog.example.com/post1\nhttps://docs.example.com/api",
-                help="Enter additional URLs to add to the existing file"
-            )
-            
-            additional_text = st.text_area(
-                "Additional Text with URLs",
-                placeholder="Check out this article: https://medium.com/example/post",
-                help="Enter text that may contain URLs to extract and add"
+            additional_input = st.text_area(
+                "Additional URLs",
+                placeholder="URLs starting with https:// or http://",
+                help="Enter additional URLs (one per line or comma-separated) and/or any text that may contain some URLs"
             )
             
             skip_existing_urls = st.checkbox(
@@ -407,11 +443,18 @@ def show_scrapper_section():
             iterative = st.checkbox(
                 "Iterative Subpage Discovery",
                 value=True,
-                help="Use iterative subpage discovery for better coverage"
+                help="Iteratively discover URLs from current search for a better coverage"
             )
         
         # Convert text inputs to lists
-        additional_urls_list = [url.strip() for url in additional_urls.split('\n') if url.strip()] if additional_urls else []
+        additional_urls_list, additional_text = extract_urls_from_combined_input(additional_input)
+        
+        # Show extracted URLs for user feedback
+        if additional_urls_list:
+            st.info(f"📋 Extracted {len(additional_urls_list)} URLs from input")
+            with st.expander("View extracted URLs"):
+                for i, url in enumerate(additional_urls_list, 1):
+                    st.write(f"{i}. {url}")
         
         # Submit button
         submit_button = st.form_submit_button(
@@ -439,6 +482,7 @@ def show_scrapper_section():
             while not st.session_state.scrape_completed:
                 time.sleep(0.1)
                 st.rerun()
+    
     # Display results
     if st.session_state.scrape_result:
         st.markdown("### Results")
@@ -465,7 +509,8 @@ def show_scrapper_section():
 
 def show_check_data_section():
     """Display the Check Data section"""
-    st.markdown('<h2 class="section-header">📊 Check Data</h2>', unsafe_allow_html=True)
+    # st.markdown('<h2 class="section-header">📊 Check Data</h2>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">📊 Check Data</h1>', unsafe_allow_html=True)
     
     # Input form
     with st.form("check_data_form"):
