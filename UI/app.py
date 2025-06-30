@@ -504,6 +504,62 @@ def download_urls(team_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/delete/<team_id>', methods=['DELETE'])
+def delete_files(team_id):
+    """Delete URL file and its corresponding _subpage file"""
+    try:
+        team_id = team_id.lower()
+        main_file_path = get_url_file_path(team_id)
+        
+        # Generate the _subpage file path
+        if main_file_path:
+            path = Path(main_file_path)
+            subpage_file_path = path.parent / f"{path.stem}_subpage{path.suffix}"
+        else:
+            return jsonify({'success': False, 'error': f'Invalid team ID: {team_id}'}), 400
+        
+        deleted_files = []
+        errors = []
+        
+        # Delete main file
+        if os.path.exists(main_file_path):
+            try:
+                os.remove(main_file_path)
+                deleted_files.append(f"{team_id}.txt")
+            except Exception as e:
+                errors.append(f"Failed to delete main file: {str(e)}")
+        
+        # Delete _subpage file
+        if os.path.exists(subpage_file_path):
+            try:
+                os.remove(subpage_file_path)
+                deleted_files.append(f"{team_id}_subpage.txt")
+            except Exception as e:
+                errors.append(f"Failed to delete subpage file: {str(e)}")
+        
+        if not deleted_files and not errors:
+            return jsonify({
+                'success': False, 
+                'error': f'No files found for team {team_id}'
+            }), 404
+        
+        if errors:
+            return jsonify({
+                'success': False,
+                'error': '; '.join(errors),
+                'deleted_files': deleted_files
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully deleted {len(deleted_files)} file(s)',
+            'deleted_files': deleted_files
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     # Create templates directory if it doesn't exist
     templates_dir = script_dir / 'templates'
