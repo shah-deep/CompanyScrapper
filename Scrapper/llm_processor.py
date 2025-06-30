@@ -103,18 +103,24 @@ class LLMProcessor:
             cleaned_fullcontent = self._clean_llm_response(combined_markdown)
             cleaned_content = self._clean_llm_response(combined_structured)
             
-            return {
-                "team_id": team_id,
-                "items": [
-                    {
+            # Create item with conditional user_id
+            item = {
                         "title": title,
                         "content": cleaned_content,
                         "full_content": cleaned_fullcontent,
                         "content_type": content_type,
                         "source_url": url,
-                        "author": author
+                        "author": author,
+                        "user_id": ""
                     }
-                ]
+            
+            # Add user_id to item if provided and not empty
+            if user_id and user_id.strip():
+                item["user_id"] = user_id.strip()
+            
+            return {
+                "team_id": team_id,
+                "items": [item]
             }
             
         except Exception as e:
@@ -174,20 +180,24 @@ class LLMProcessor:
 
             Content Information:
             - Current Title: {title}
-            - Current Content Type: {content_type}
-            - Current Authors: {author}
+            - Possible Content Type: {content_type}
+            - Possible Authors: {author}
 
             Content (Markdown):
             {markdown_content}
 
-            Respond in this format: "title|content_type|author"
+            Respond in this EXACT format: "title|content_type|author"
             
             Where:
             - title: extracted or generated title (find & use original if good, generate if missing/generic)
             - content_type: the identified content type (use original if given)
-            - author: the found authors (use original if given, or empty string if not found)
+            - author: the found authors (or empty string)
             
-            IMPORTANT: If any field cannot be determined, use the original value or empty string. Do not fail completely.
+            IMPORTANT: 
+            - Use ONLY the pipe-separated format: "title|content_type|author"
+            - Do NOT use JSON format
+            - Do NOT add any additional text or explanations
+            - If any field cannot be determined, use the original value or empty string. Do not fail completely.
             """
             
             response = self.model.generate_content(prompt)
@@ -199,20 +209,46 @@ class LLMProcessor:
             response_text = response.text.strip()
             
             try:
-                parts = response_text.split("|", 2)
-                if len(parts) == 3:
-                    extracted_title, extracted_content_type, extracted_author = parts
+                # First try to parse as pipe-separated format
+                if "|" in response_text:
+                    parts = response_text.split("|", 2)
+                    if len(parts) == 3:
+                        extracted_title, extracted_content_type, extracted_author = parts
+                        
+                        # Use extracted values if they're meaningful, otherwise fall back to originals
+                        final_title = extracted_title if extracted_title and extracted_title.strip() and extracted_title.lower() not in ['unknown', 'untitled', 'no title'] else title
+                        final_content_type = extracted_content_type if extracted_content_type and extracted_content_type.strip() and extracted_content_type.lower() != 'unknown' else content_type
+                        final_author = extracted_author if extracted_author and extracted_author.strip() and extracted_author.lower() != 'unknown' else author
+                        
+                        return final_title, final_content_type, final_author
+                
+                # If pipe-separated format fails, try to parse JSON format as fallback
+                import json
+                try:
+                    # Clean the response using existing function
+                    cleaned_response = self._clean_llm_response(response_text)
+                    
+                    json_data = json.loads(cleaned_response)
+                    
+                    extracted_title = json_data.get('title', title)
+                    extracted_content_type = json_data.get('content_type', content_type)
+                    extracted_author = json_data.get('author', author)
                     
                     # Use extracted values if they're meaningful, otherwise fall back to originals
                     final_title = extracted_title if extracted_title and extracted_title.strip() and extracted_title.lower() not in ['unknown', 'untitled', 'no title'] else title
                     final_content_type = extracted_content_type if extracted_content_type and extracted_content_type.strip() and extracted_content_type.lower() != 'unknown' else content_type
                     final_author = extracted_author if extracted_author and extracted_author.strip() and extracted_author.lower() != 'unknown' else author
                     
+                    self.logger.info(f"Successfully parsed JSON response for metadata")
                     return final_title, final_content_type, final_author
-                else:
-                    # If parsing fails, return original values
-                    self.logger.warning(f"Unexpected metadata response format: {response_text}")
-                    return title, content_type, author
+                    
+                except json.JSONDecodeError:
+                    self.logger.warning(f"Failed to parse JSON response: {response_text}")
+                
+                # If both formats fail, return original values
+                self.logger.warning(f"Unexpected metadata response format: {response_text}")
+                return title, content_type, author
+                
             except Exception as e:
                 self.logger.error(f"Error parsing metadata response: {e}")
                 # Return original values if parsing fails
@@ -356,8 +392,8 @@ class LLMProcessor:
 
             Content Information:
             - Current Title: {title}
-            - Current Content Type: {content_type}
-            - Current Author: {author}
+            - Possible Content Type: {content_type}
+            - Possible Authors: {author}
             - URL: {url}
 
             Content (Markdown):
@@ -371,10 +407,14 @@ class LLMProcessor:
             Where:
             - title: extracted or generated title (find & use original if good, generate if missing/generic)
             - content_type: the identified content type (use original if given)
-            - author: the found authors (use original if given, or empty string)
+            - author: the found authors (or empty string)
             - extracted_knowledge_markdown: the structured technical knowledge
             
-            IMPORTANT: If any metadata field cannot be determined, use the original value or empty string. Do not fail completely.
+            IMPORTANT: 
+            - Use ONLY the pipe-separated format: "TECHNICAL|title|content_type|author|extracted_knowledge_markdown"
+            - Do NOT use JSON format
+            - Do NOT add any additional text or explanations
+            - If any metadata field cannot be determined, use the original value or empty string. Do not fail completely.
             """
             
             response = self.model.generate_content(prompt)
@@ -389,7 +429,7 @@ class LLMProcessor:
                 self.logger.info(f"Skipping non-technical content: {title}")
                 return None
             
-            # Parse technical response
+            # Parse technical response - try pipe-separated format first
             if response_text.startswith("TECHNICAL|"):
                 try:
                     parts = response_text.split("|", 4)
@@ -401,25 +441,77 @@ class LLMProcessor:
                         final_content_type = extracted_content_type if extracted_content_type and extracted_content_type != 'blog' else content_type
                         final_author = extracted_author if extracted_author and extracted_author != 'Unknown' else author
                         
-                        # Clean the structured content
+                        # Clean the structured content using existing function
                         cleaned_fullcontent = self._clean_llm_response(markdown_content)
                         cleaned_content = self._clean_llm_response(structured_content)
                         
-                        return {
-                            "team_id": team_id,
-                            "items": [
-                                {
+                        # Create item with conditional user_id
+                        item = {
                                     "title": final_title,
                                     "content": cleaned_content,
                                     "full_content": cleaned_fullcontent,
                                     "content_type": final_content_type,
                                     "source_url": url,
-                                    "author": final_author
+                                    "author": final_author,
+                                    "user_id": ""
                                 }
-                            ]
+                        
+                        # Add user_id to item if provided and not empty
+                        if user_id and user_id.strip():
+                            item["user_id"] = user_id
+                        
+                        return {
+                            "team_id": team_id,
+                            "items": [item]
                         }
                 except Exception as e:
-                    self.logger.error(f"Error parsing LLM response: {e}")
+                    self.logger.error(f"Error parsing pipe-separated LLM response: {e}")
+            
+            # If pipe-separated format fails, try to parse JSON format as fallback
+            try:
+                # Clean the response using existing function
+                cleaned_response = self._clean_llm_response(response_text)
+                
+                json_data = json.loads(cleaned_response)
+                
+                extracted_title = json_data.get('title', title)
+                extracted_content_type = json_data.get('content_type', content_type)
+                extracted_author = json_data.get('author', author)
+                extracted_knowledge = json_data.get('knowledge', '') or json_data.get('content', '')
+                
+                # Use extracted values if they're meaningful, otherwise fall back to originals
+                final_title = extracted_title if extracted_title and extracted_title.strip() and extracted_title.lower() not in ['unknown', 'untitled', 'no title'] else title
+                final_content_type = extracted_content_type if extracted_content_type and extracted_content_type.strip() and extracted_content_type.lower() != 'unknown' else content_type
+                final_author = extracted_author if extracted_author and extracted_author.strip() and extracted_author.lower() != 'unknown' else author
+                
+                # Clean the content using existing function
+                cleaned_fullcontent = self._clean_llm_response(markdown_content)
+                cleaned_content = self._clean_llm_response(extracted_knowledge) if extracted_knowledge else cleaned_fullcontent
+                
+                # Create item with conditional user_id
+                item = {
+                            "title": final_title,
+                            "content": cleaned_content,
+                            "full_content": cleaned_fullcontent,
+                            "content_type": final_content_type,
+                            "source_url": url,
+                            "author": final_author
+                        }
+                
+                # Add user_id to item if provided
+                if user_id and user_id.strip():
+                    item["user_id"] = user_id
+                
+                self.logger.info(f"Successfully parsed JSON response for knowledge extraction")
+                return {
+                    "team_id": team_id,
+                    "items": [item]
+                }
+                
+            except json.JSONDecodeError:
+                self.logger.warning(f"Failed to parse JSON response: {response_text}")
+            except Exception as e:
+                self.logger.error(f"Error parsing JSON LLM response: {e}")
             
             # Fallback: use original content if parsing fails
             # Try to extract a basic title from content if none exists
@@ -436,17 +528,25 @@ class LLMProcessor:
                             fallback_title = clean_line
                             break
             
-            return {
-                "team_id": team_id,
-                "items": [
-                    {
+            # Clean the content using existing function
+            cleaned_fullcontent = self._clean_llm_response(markdown_content)
+            
+            # Create item with conditional user_id
+            item = {
                         "title": fallback_title,
-                        "content": markdown_content,
+                        "content": cleaned_fullcontent,
                         "content_type": content_type,
                         "source_url": url,
                         "author": author
                     }
-                ]
+            
+            # Add user_id to item if provided
+            if user_id and user_id.strip():
+                item["user_id"] = user_id
+            
+            return {
+                "team_id": team_id,
+                "items": [item]
             }
                 
         except Exception as e:

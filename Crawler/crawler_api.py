@@ -70,6 +70,7 @@ def validate_url(url: str) -> bool:
 
 def crawl_company(
     company_url: str,
+    team_id: str,
     additional_urls: Optional[List[str]] = None,
     additional_text: Optional[str] = None,
     max_pages: int = 50,
@@ -85,6 +86,7 @@ def crawl_company(
     
     Args:
         company_url: The company homepage URL to analyze
+        team_id: Team ID for organizing the data
         additional_urls: List of additional URLs to include
         additional_text: Text content that may contain URLs to extract
         max_pages: Maximum pages to crawl on company website
@@ -224,7 +226,7 @@ def crawl_company(
         
         if simple_output:
             # Generate simple URL list
-            output_file_path = aggregator.generate_simple_url_list(company_name, output_file)
+            output_file_path = aggregator.generate_simple_url_list(company_name, team_id, output_file)
             output_files.append(output_file_path)
         else:
             # Generate comprehensive URL list
@@ -263,15 +265,15 @@ def crawl_company(
 
 
 def add_urls_to_existing_file(
-    company_url: str,
+    team_id: str,
     additional_urls: Optional[List[str]] = None,
     additional_text: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Add URLs to an existing company URL file
+    Add URLs to an existing team URL file
     
     Args:
-        company_url: The company URL (used to find the existing file)
+        team_id: The team ID (used to find the existing file)
         additional_urls: List of additional URLs to add
         additional_text: Text content that may contain URLs to extract
         
@@ -302,11 +304,9 @@ def add_urls_to_existing_file(
             'error': 'No valid URLs to add'
         }
     
-    # Find the existing file
+    # Find the existing file using team_id
     try:
-        parsed_url = urlparse(company_url)
-        domain = parsed_url.netloc
-        filename = f"{domain}.txt"
+        filename = f"{team_id}.txt"
         
         # Get the output directory
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -317,7 +317,7 @@ def add_urls_to_existing_file(
         if not os.path.exists(file_path):
             return {
                 'success': False,
-                'error': f'No existing file found for {company_url}'
+                'error': f'No existing file found for team_id: {team_id}'
             }
         
         # Read existing URLs

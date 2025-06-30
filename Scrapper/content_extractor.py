@@ -595,7 +595,9 @@ class ContentExtractor:
             r'Author:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
             r'Written by\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
             r'Posted by\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
-            r'Contributor:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)'
+            r'Contributor:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+            r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+Jul\s+\d{4}', 
+            r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+\d{4}', 
         ]
         
         page_text = soup.get_text()

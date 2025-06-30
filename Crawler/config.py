@@ -36,7 +36,7 @@ FOUNDER_KEYWORDS = [
 
 # URL filtering - words to skip in URLs (but not if they're in company name or URL)
 # These words will be skipped when found in external URLs, but preserved if they're part of the company name or URL
-SKIP_URL_WORDS = ['reddit']
+SKIP_URL_WORDS = ['reddit', 'login', 'terms', 'privacy', 'signup', 'sign_in', 'sign_up', 'sign_out', 'logout']
 
 """   
 Other options to skip:  

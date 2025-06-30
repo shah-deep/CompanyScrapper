@@ -8,6 +8,7 @@ from pathlib import Path
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import asyncio
+from logging.handlers import QueueHandler, QueueListener
 
 # Add the current directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -18,13 +19,44 @@ from llm_processor import LLMProcessor
 from database_handler import DatabaseHandler
 from config import Config
 
+def setup_logging_queue(logfile=None):
+    """Setup multiprocessing-safe logging to a single file."""
+    if logfile is None:
+        logfile = Config.LOG_FILE
+    log_queue = mp.Queue(-1)
+    file_handler = logging.FileHandler(logfile)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    listener = QueueListener(log_queue, file_handler)
+    listener.start()
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.handlers = []
+    root.addHandler(QueueHandler(log_queue))
+    # Suppress noisy loggers
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('aiohttp').setLevel(logging.WARNING)
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
+    return listener, log_queue
+
+def worker_init_logging(log_queue):
+    """Initialize logging in worker processes to use the shared log queue."""
+    root = logging.getLogger()
+    root.handlers = []
+    root.addHandler(QueueHandler(log_queue))
+    root.setLevel(logging.INFO)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('aiohttp').setLevel(logging.WARNING)
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
+
 class KnowledgeScraper:
-    def __init__(self, team_id: str, user_id: str = "", processing_mode: str = "multiprocessing", skip_existing_urls: bool = False):
+    def __init__(self, team_id: str, user_id: str = "", processing_mode: str = "multiprocessing", skip_existing_urls: bool = False, log_queue=None):
         self.team_id = team_id
         self.user_id = user_id
         self.processing_mode = processing_mode.lower()  # "multiprocessing" or "async"
         self.skip_existing_urls = skip_existing_urls  # New parameter to skip URLs already in DB
         self.logger = logging.getLogger(__name__)
+        self.log_queue = log_queue
         
         # Statistics
         self.stats = {
@@ -59,13 +91,25 @@ class KnowledgeScraper:
     def __enter__(self):
         """Initialize based on processing mode."""
         if self.processing_mode == "multiprocessing":
-            self.process_pool = ProcessPoolExecutor(max_workers=self.max_workers)
+            # Setup process pool with logging queue
+            if self.log_queue is not None:
+                self.process_pool = mp.get_context("spawn").Pool(
+                    processes=self.max_workers,
+                    initializer=worker_init_logging,
+                    initargs=(self.log_queue,)
+                )
+            else:
+                self.process_pool = mp.get_context("spawn").Pool(processes=self.max_workers)
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Clean up based on processing mode."""
         if self.processing_mode == "multiprocessing" and self.process_pool:
-            self.process_pool.shutdown(wait=True)
+            self.process_pool.close()
+            self.process_pool.join()
+        
+        # Clean up shared database connection pool
+        DatabaseHandler.close_connection_pool()
     
     async def __aenter__(self):
         """Initialize async components."""
@@ -92,6 +136,9 @@ class KnowledgeScraper:
                 await self.content_extractor.__aexit__(exc_type, exc_val, exc_tb)
             if self.db_handler:
                 await self.db_handler.disconnect()
+        
+        # Clean up shared database connection pool
+        DatabaseHandler.close_connection_pool()
     
     def _get_subpage_file_path(self, original_file_path: str) -> str:
         """Generate subpage file path based on original file path."""
@@ -119,7 +166,7 @@ class KnowledgeScraper:
             with open(file_path, 'w', encoding='utf-8') as file:
                 for url in sorted(urls):
                     file.write(f"{url}\n")
-            self.logger.info(f"Saved {len(urls)} URLs to {file_path}")
+            self.logger.info(f"SAVED {len(urls)} URLs to {os.path.basename(file_path)}")
         except Exception as e:
             self.logger.error(f"Error saving URLs to file {file_path}: {e}")
     
@@ -133,7 +180,7 @@ class KnowledgeScraper:
                 with open(file_path, 'a', encoding='utf-8') as file:
                     for url in sorted(new_urls):
                         file.write(f"{url}\n")
-                self.logger.info(f"Appended {len(new_urls)} new URLs to {file_path}")
+                self.logger.info(f"APPENDED {len(new_urls)} URLs to {os.path.basename(file_path)}")
                 return len(new_urls)
             return 0
         except Exception as e:
@@ -154,6 +201,15 @@ class KnowledgeScraper:
             self.logger.info(f"Removed {len(urls)} URLs from subpage file {file_path}")
         except Exception as e:
             self.logger.error(f"Error removing URLs from subpage file {file_path}: {e}")
+    
+    def _delete_subpage_file(self, file_path: str):
+        """Delete subpage file after processing is complete."""
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                self.logger.info(f"DELETED subpage file: {os.path.basename(file_path)}")
+        except Exception as e:
+            self.logger.error(f"Error deleting subpage file {file_path}: {e}")
     
     async def _load_existing_urls_from_db(self):
         """Load existing URLs from database for the team to avoid reprocessing."""
@@ -262,24 +318,18 @@ class KnowledgeScraper:
                 iteration += 1
                 self.stats['iterations_completed'] = iteration
                 
-                self.logger.info(f"\n{'='*60}")
-                self.logger.info(f"ITERATION {iteration}")
-                self.logger.info(f"URLs to process in this iteration: {len(current_iteration_urls)}")
-                self.logger.info(f"Total URLs processed so far: {len(processed_urls)}")
-                self.logger.info(f"{'='*60}")
+                self.logger.info(f"ITERATION {iteration}: Processing {len(current_iteration_urls)} URLs")
                 
                 # Process current iteration URLs using multiprocessing
                 new_discovered_urls = self._process_urls_iteration_parallel(
                     list(current_iteration_urls), processed_urls
                 )
                 
-                self.logger.info(f"Discovered {len(new_discovered_urls)} new URLs in iteration {iteration}")
+                self.logger.info(f"ITERATION {iteration}: Discovered {len(new_discovered_urls)} new URLs")
                 
                 # Update tracking
                 processed_urls.update(current_iteration_urls)
                 self.all_discovered_urls.update(new_discovered_urls)
-                
-                self.logger.info(f"Total discovered URLs so far: {len(self.all_discovered_urls)}")
                 
                 # Save discovered URLs to subpage file (always update with cumulative list)
                 self._save_urls_to_file(subpage_file_path, self.all_discovered_urls)
@@ -289,17 +339,16 @@ class KnowledgeScraper:
                 # Find new URLs that weren't in original file
                 new_urls_for_next_iteration = new_discovered_urls - self.original_urls - processed_urls
                 
-                self.logger.info(f"New URLs for next iteration: {len(new_urls_for_next_iteration)}")
-                
                 if new_urls_for_next_iteration:
-                    self.logger.info(f"Found {len(new_urls_for_next_iteration)} new URLs for next iteration")
+                    self.logger.info(f"ITERATION {iteration}: Found {len(new_urls_for_next_iteration)} new URLs for next iteration")
                     
                     # Append new URLs to original file
                     appended_count = self._append_urls_to_file(file_path, new_urls_for_next_iteration)
-                    self.logger.info(f"Appended {appended_count} new URLs to {file_path}")
+                    self.logger.info(f"ITERATION {iteration}: Appended {appended_count} URLs to main file")
                     
                     # Remove the newly added URLs from subpage file to keep it clean
-                    self._remove_urls_from_subpage_file(subpage_file_path, self.original_urls)
+                    original_urls_before_update = self.original_urls.copy()
+                    self._remove_urls_from_subpage_file(subpage_file_path, original_urls_before_update)
 
                     # Update original URLs set
                     self.original_urls.update(new_urls_for_next_iteration)
@@ -308,22 +357,28 @@ class KnowledgeScraper:
                     # Set URLs for next iteration
                     current_iteration_urls = new_urls_for_next_iteration
                 else:
-                    self.logger.info("No new URLs found. Stopping iterative process.")
+                    self.logger.info(f"ITERATION {iteration}: No new URLs found. Stopping.")
                     current_iteration_urls = set()
             
             self.logger.info(f"\n{'='*60}")
-            self.logger.info("ITERATIVE PROCESSING COMPLETED")
+            self.logger.info("COMPLETED")
             self.logger.info(f"Total iterations: {iteration}")
             self.logger.info(f"Total URLs processed: {len(processed_urls)}")
             self.logger.info(f"Total subpages discovered: {len(self.all_discovered_urls)}")
-            self.logger.info(f"Subpage file: {subpage_file_path}")
+            self.logger.info(f"Subpage file: {os.path.basename(subpage_file_path)}")
             self.logger.info(f"{'='*60}")
+            
+            # Delete subpage file after processing is complete
+            self._delete_subpage_file(subpage_file_path)
             
             return self.stats
             
         except Exception as e:
             self.logger.error(f"Error in iterative processing: {e}")
             self.stats['errors'].append(str(e))
+            # Clean up subpage file even if there's an error
+            if 'subpage_file_path' in locals():
+                self._delete_subpage_file(subpage_file_path)
             return self.stats
     
     async def _process_url_file_iterative_async(self, file_path: str) -> Dict[str, Any]:
@@ -355,24 +410,18 @@ class KnowledgeScraper:
                 iteration += 1
                 self.stats['iterations_completed'] = iteration
                 
-                self.logger.info(f"\n{'='*60}")
-                self.logger.info(f"ITERATION {iteration}")
-                self.logger.info(f"URLs to process in this iteration: {len(current_iteration_urls)}")
-                self.logger.info(f"Total URLs processed so far: {len(processed_urls)}")
-                self.logger.info(f"{'='*60}")
+                self.logger.info(f"ITERATION {iteration}: Processing {len(current_iteration_urls)} URLs")
                 
                 # Process current iteration URLs using async
                 new_discovered_urls = await self._process_urls_iteration_async(
                     list(current_iteration_urls), processed_urls
                 )
                 
-                self.logger.info(f"Discovered {len(new_discovered_urls)} new URLs in iteration {iteration}")
+                self.logger.info(f"ITERATION {iteration}: Discovered {len(new_discovered_urls)} new URLs")
                 
                 # Update tracking
                 processed_urls.update(current_iteration_urls)
                 self.all_discovered_urls.update(new_discovered_urls)
-                
-                self.logger.info(f"Total discovered URLs so far: {len(self.all_discovered_urls)}")
                 
                 # Save discovered URLs to subpage file (always update with cumulative list)
                 self._save_urls_to_file(subpage_file_path, self.all_discovered_urls)
@@ -382,17 +431,16 @@ class KnowledgeScraper:
                 # Find new URLs that weren't in original file
                 new_urls_for_next_iteration = new_discovered_urls - self.original_urls - processed_urls
                 
-                self.logger.info(f"New URLs for next iteration: {len(new_urls_for_next_iteration)}")
-                
                 if new_urls_for_next_iteration:
-                    self.logger.info(f"Found {len(new_urls_for_next_iteration)} new URLs for next iteration")
+                    self.logger.info(f"ITERATION {iteration}: Found {len(new_urls_for_next_iteration)} new URLs for next iteration")
                     
                     # Append new URLs to original file
                     appended_count = self._append_urls_to_file(file_path, new_urls_for_next_iteration)
-                    self.logger.info(f"Appended {appended_count} new URLs to {file_path}")
+                    self.logger.info(f"ITERATION {iteration}: Appended {appended_count} URLs to main file")
                     
                     # Remove the newly added URLs from subpage file to keep it clean
-                    self._remove_urls_from_subpage_file(subpage_file_path, self.original_urls)
+                    original_urls_before_update = self.original_urls.copy()
+                    self._remove_urls_from_subpage_file(subpage_file_path, original_urls_before_update)
 
                     # Update original URLs set
                     self.original_urls.update(new_urls_for_next_iteration)
@@ -400,56 +448,58 @@ class KnowledgeScraper:
                     # Set URLs for next iteration
                     current_iteration_urls = new_urls_for_next_iteration
                 else:
-                    self.logger.info("No new URLs found. Stopping iterative process.")
+                    self.logger.info(f"ITERATION {iteration}: No new URLs found. Stopping.")
                     current_iteration_urls = set()
             
             self.logger.info(f"\n{'='*60}")
-            self.logger.info("ITERATIVE PROCESSING COMPLETED")
+            self.logger.info("COMPLETED")
             self.logger.info(f"Total iterations: {iteration}")
             self.logger.info(f"Total URLs processed: {len(processed_urls)}")
             self.logger.info(f"Total subpages discovered: {len(self.all_discovered_urls)}")
-            self.logger.info(f"Subpage file: {subpage_file_path}")
+            self.logger.info(f"Subpage file: {os.path.basename(subpage_file_path)}")
             self.logger.info(f"{'='*60}")
+            
+            # Delete subpage file after processing is complete
+            self._delete_subpage_file(subpage_file_path)
             
             return self.stats
             
         except Exception as e:
             self.logger.error(f"Error in iterative processing: {e}")
             self.stats['errors'].append(str(e))
+            # Clean up subpage file even if there's an error
+            if 'subpage_file_path' in locals():
+                self._delete_subpage_file(subpage_file_path)
             return self.stats
     
-    def _process_urls_iteration_parallel(self, urls: List[str], processed_urls: Set[str]) -> Set[str]:
-        """Process a set of URLs in one iteration using multiprocessing and return newly discovered URLs."""
+    def _process_urls_iteration_parallel(self, urls: list, processed_urls: set) -> set:
         if not self.process_pool:
             raise RuntimeError("Process pool not initialized")
-        
-        # Track discovered URLs for this iteration
         iteration_discovered_urls = set()
         
         # Submit all URLs to process pool
-        future_to_url = {}
+        futures = []
         for url in urls:
-            future = self.process_pool.submit(
+            future = self.process_pool.apply_async(
                 process_single_url_worker,
-                url, self.team_id, self.user_id, self.skip_existing_urls
+                args=(url, self.team_id, self.user_id, self.skip_existing_urls)
             )
-            future_to_url[future] = url
+            futures.append((future, url))
         
-        # Collect results as they complete
-        for future in as_completed(future_to_url):
-            url = future_to_url[future]
+        # Collect results as they complete (non-blocking parallel collection)
+        for future, url in futures:
             try:
-                result = future.result()
+                result = future.get()  # type: ignore[attr-defined]
                 if result:
-                    # Update statistics
                     if result.get('skipped'):
                         self.stats['urls_skipped'] += 1
-                        self.logger.info(f"Skipped URL (already in database): {url}")
+                        self.logger.info(f"SKIP: {url}")
                     else:
                         self.stats['urls_processed'] += 1
                         if result.get('subpages'):
                             iteration_discovered_urls.update(result['subpages'])
                             self.stats['subpages_discovered'] += len(result['subpages'])
+                            self.logger.info(f"URL: {url} -> {len(result['subpages'])} subpages")
                         if result.get('content_extracted'):
                             self.stats['content_extracted'] += 1
                         if result.get('knowledge_saved'):
@@ -457,16 +507,16 @@ class KnowledgeScraper:
                         if result.get('error'):
                             self.stats['urls_failed'] += 1
                             self.stats['errors'].append(f"Error processing {url}: {result['error']}")
+                            self.logger.info(f"ERROR: {url} - {result['error']}")
                 else:
                     self.stats['urls_failed'] += 1
+                    self.logger.info(f"FAILED: {url}")
             except Exception as e:
                 self.stats['urls_failed'] += 1
                 self.stats['errors'].append(f"Error processing {url}: {str(e)}")
-                self.logger.error(f"Error processing {url}: {e}")
-    
-        # Return newly discovered URLs (excluding already processed ones)
-        new_discovered = iteration_discovered_urls - processed_urls - set(urls)
+                self.logger.info(f"EXCEPTION: {url} - {str(e)}")
         
+        new_discovered = iteration_discovered_urls - processed_urls - set(urls)
         return new_discovered
     
     async def _process_urls_iteration_async(self, urls: List[str], processed_urls: Set[str]) -> Set[str]:
@@ -643,14 +693,64 @@ class KnowledgeScraper:
     
     def get_team_knowledge(self) -> Dict[str, Any] | None:
         """Retrieve all knowledge for the team."""
-        # This would need to be implemented with a separate database connection
-        # For now, return None as this is not the main focus
+        try:
+            # Create a temporary database handler for this process
+            temp_handler = DatabaseHandler()
+            
+            # Create a new event loop for this thread/process
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            try:
+                # Connect and get team data
+                loop.run_until_complete(temp_handler.connect())
+                team_data = loop.run_until_complete(temp_handler.get_team_knowledge(self.team_id))
+                
+                # Clean up connection
+                loop.run_until_complete(temp_handler.disconnect())
+                
+                return team_data
+                
+            finally:
+                if loop.is_running():
+                    loop.close()
+                    
+        except Exception as e:
+            self.logger.error(f"Error retrieving team knowledge: {e}")
         return None
     
     def search_knowledge(self, query: str) -> List[Dict[str, Any]]:
         """Search knowledge within the team."""
-        # This would need to be implemented with a separate database connection
-        # For now, return empty list as this is not the main focus
+        try:
+            # Create a temporary database handler for this process
+            temp_handler = DatabaseHandler()
+            
+            # Create a new event loop for this thread/process
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            try:
+                # Connect and search
+                loop.run_until_complete(temp_handler.connect())
+                search_results = loop.run_until_complete(temp_handler.search_knowledge(self.team_id, query))
+                
+                # Clean up connection
+                loop.run_until_complete(temp_handler.disconnect())
+                
+                return search_results
+                
+            finally:
+                if loop.is_running():
+                    loop.close()
+                    
+        except Exception as e:
+            self.logger.error(f"Error searching knowledge: {e}")
         return []
     
     def get_statistics(self) -> Dict[str, Any]:
@@ -665,9 +765,9 @@ class KnowledgeScraper:
         # Submit all URLs to process pool
         future_to_url = {}
         for url in urls:
-            future = self.process_pool.submit(
+            future = self.process_pool.apply_async(
                 process_single_url_worker,
-                url, self.team_id, self.user_id, self.skip_existing_urls
+                args=(url, self.team_id, self.user_id, self.skip_existing_urls)
             )
             future_to_url[future] = url
         
@@ -680,7 +780,7 @@ class KnowledgeScraper:
                     # Update statistics
                     if result.get('skipped'):
                         self.stats['urls_skipped'] += 1
-                        self.logger.info(f"Skipped URL (already in database): {url}")
+                        self.logger.info(f"SKIP: {url}")
                     else:
                         self.stats['urls_processed'] += 1
                         if result.get('subpages'):
@@ -693,12 +793,14 @@ class KnowledgeScraper:
                         if result.get('error'):
                             self.stats['urls_failed'] += 1
                             self.stats['errors'].append(f"Error processing {url}: {result['error']}")
+                            self.logger.info(f"ERROR: {url} - {result['error']}")
                 else:
                     self.stats['urls_failed'] += 1
+                    self.logger.info(f"FAILED: {url}")
             except Exception as e:
                 self.stats['urls_failed'] += 1
                 self.stats['errors'].append(f"Error processing {url}: {str(e)}")
-                self.logger.error(f"Error processing {url}: {e}")
+                self.logger.info(f"EXCEPTION: {url} - {str(e)}")
 
 def process_single_url_worker(url: str, team_id: str, user_id: str, skip_existing_urls: bool = False) -> Dict[str, Any]:
     """Worker function to process a single URL in a separate process."""
@@ -729,7 +831,7 @@ def process_single_url_worker(url: str, team_id: str, user_id: str, skip_existin
                     asyncio.set_event_loop(loop)
                 
                 try:
-                    # Connect and check if URL exists
+                    # Connect using shared connection pool
                     loop.run_until_complete(db_handler.connect())
                     team_data = loop.run_until_complete(db_handler.get_team_knowledge(team_id))
                     
@@ -738,10 +840,10 @@ def process_single_url_worker(url: str, team_id: str, user_id: str, skip_existin
                         if url in existing_urls:
                             result['skipped'] = True
                             result['error'] = "URL already exists in database"
+                            # Don't disconnect since we're using shared pool
                             return result
                     
-                    # Clean up
-                    loop.run_until_complete(db_handler.disconnect())
+                    # Don't disconnect since we're using shared pool
                     
                 finally:
                     if loop.is_running():
@@ -778,7 +880,7 @@ def process_single_url_worker(url: str, team_id: str, user_id: str, skip_existin
             result['error'] = "Failed to process content with LLM"
             return result
         
-        # Step 5: Save to database
+        # Step 5: Save to database using shared connection pool
         success = db_handler.save_knowledge_item_sync(knowledge_data)
         if success:
             result['knowledge_saved'] = True
@@ -797,17 +899,6 @@ def process_single_url_worker(url: str, team_id: str, user_id: str, skip_existin
             'error': str(e)
         }
 
-def setup_logging():
-    """Setup logging configuration."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(Config.LOG_FILE),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Knowledge Scraper for Technical Content')
@@ -824,15 +915,22 @@ def main():
     
     args = parser.parse_args()
     
-    # Setup logging
-    setup_logging()
+    if args.processing_mode == "multiprocessing":
+        listener, log_queue = setup_logging_queue()
+    else:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler(sys.stdout)]
+        )
+        listener = None
+        log_queue = None
     logger = logging.getLogger(__name__)
     
     try:
         if args.processing_mode == "async":
-            # Use async context manager
             async def run_async():
-                async with KnowledgeScraper(args.team_id, args.user_id, args.processing_mode, args.skip_existing) as scraper:
+                async with KnowledgeScraper(args.team_id, args.user_id, args.processing_mode, args.skip_existing, log_queue=log_queue) as scraper:
                     if args.search:
                         # Search existing knowledge
                         results = scraper.search_knowledge(args.search)
@@ -879,8 +977,7 @@ def main():
             asyncio.run(run_async())
             
         else:
-            # Use multiprocessing context manager
-            with KnowledgeScraper(args.team_id, args.user_id, args.processing_mode, args.skip_existing) as scraper:
+            with KnowledgeScraper(args.team_id, args.user_id, args.processing_mode, args.skip_existing, log_queue=log_queue) as scraper:
                 if args.search:
                     # Search existing knowledge
                     results = scraper.search_knowledge(args.search)
@@ -922,10 +1019,9 @@ def main():
                         print("\nErrors:")
                         for error in stats['errors']:
                             print(f"  - {error}")
-    
-    except Exception as e:
-        logger.error(f"Application error: {e}")
-        sys.exit(1)
+    finally:
+        if listener:
+            listener.stop()
 
 if __name__ == "__main__":
     main() 

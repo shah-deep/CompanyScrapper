@@ -68,16 +68,16 @@ class URLProcessor:
             return []
             
         try:
-            self.logger.info(f"Discovering subpages from: {url}")
+            self.logger.info(f"DISCOVER: {url}")
             async with self.session.get(url) as response:
                 if response.status != 200:
                     self.failed_urls.add(url)
-                    self.logger.warning(f"Failed to fetch {url}: Status {response.status}")
+                    self.logger.info(f"HTTP {response.status}: {url}")
                     return []
                 
                 content_type = response.headers.get('content-type', '').lower()
                 if 'text/html' not in content_type:
-                    self.logger.info(f"Skipping {url}: Not HTML content ({content_type})")
+                    self.logger.info(f"SKIP {content_type}: {url}")
                     return []
                 
                 html = await response.text()
@@ -85,7 +85,6 @@ class URLProcessor:
                 
                 # Find all links
                 links = soup.find_all('a', href=True)
-                self.logger.info(f"Found {len(links)} total links on {url}")
                 
                 subpages = []
                 filtered_count = 0
@@ -113,11 +112,11 @@ class URLProcessor:
                         unique_subpages.append(subpage)
                 
                 self.discovered_urls.update(unique_subpages)
-                self.logger.info(f"Discovered {len(unique_subpages)} subpages from {url} (filtered out {filtered_count} links)")
+                self.logger.info(f"FOUND {len(unique_subpages)} subpages from {url}")
                 return unique_subpages
                 
         except Exception as e:
-            self.logger.error(f"Error discovering subpages from {url}: {e}")
+            self.logger.info(f"ERROR discovering {url}: {e}")
             self.failed_urls.add(url)
             return []
     

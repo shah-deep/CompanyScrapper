@@ -200,19 +200,24 @@ class URLAggregator:
         print(f"URL list saved to: {output_file}")
         return output_file
     
-    def generate_simple_url_list(self, company_name, output_file=None):
+    def generate_simple_url_list(self, company_name, team_id=None, output_file=None):
         """Generate a simple list of just URLs, appending to file if it exists, avoiding duplicates."""
         if output_file is None:
-            from urllib.parse import urlparse
-            try:
-                if self.company_url:
-                    parsed_url = urlparse(self.company_url)
-                    domain = parsed_url.netloc
-                    filename = f"{domain}.txt"
-                else:
+            if team_id:
+                # Use team_id for filename
+                filename = f"{team_id}.txt"
+            else:
+                # Fallback to domain-based naming
+                from urllib.parse import urlparse
+                try:
+                    if self.company_url:
+                        parsed_url = urlparse(self.company_url)
+                        domain = parsed_url.netloc
+                        filename = f"{domain}.txt"
+                    else:
+                        filename = f"{company_name.replace(' ', '_')}.txt"
+                except:
                     filename = f"{company_name.replace(' ', '_')}.txt"
-            except:
-                filename = f"{company_name.replace(' ', '_')}.txt"
         else:
             filename = output_file
         
