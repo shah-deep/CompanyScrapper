@@ -110,12 +110,13 @@ class LLMProcessor:
                         "full_content": cleaned_fullcontent,
                         "content_type": content_type,
                         "source_url": url,
-                        "author": author
+                        "author": author,
+                        "user_id": ""
                     }
             
-            # Add user_id to item if provided
+            # Add user_id to item if provided and not empty
             if user_id and user_id.strip():
-                item["user_id"] = user_id
+                item["user_id"] = user_id.strip()
             
             return {
                 "team_id": team_id,
@@ -451,10 +452,11 @@ class LLMProcessor:
                                     "full_content": cleaned_fullcontent,
                                     "content_type": final_content_type,
                                     "source_url": url,
-                                    "author": final_author
+                                    "author": final_author,
+                                    "user_id": ""
                                 }
                         
-                        # Add user_id to item if provided
+                        # Add user_id to item if provided and not empty
                         if user_id and user_id.strip():
                             item["user_id"] = user_id
                         
