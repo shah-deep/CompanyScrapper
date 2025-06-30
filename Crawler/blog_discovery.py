@@ -227,7 +227,7 @@ class BlogDiscovery:
             print(f"Google search error: {str(e)}")
             return []
 
-    def _google_search2(self, query, max_results=10):
+    def _google_search2(self, query, max_results=50):
         """Perform Google Custom Search"""
         try:
             if not self.google_service:
@@ -238,7 +238,7 @@ class BlogDiscovery:
                 search_results = self.google_service.cse().list(
                     q=query,
                     cx=GOOGLE_CSE_ID,
-                    start=i
+                    start=i + 1
                 ).execute()
                 
                 if 'items' in search_results:
@@ -247,7 +247,7 @@ class BlogDiscovery:
                 if len(results) >= max_results:
                     break
             
-            return results[:max_results]
+            return results
             
         except Exception as e:
             print(f"Google search error: {str(e)}")
@@ -395,7 +395,7 @@ class BlogDiscovery:
             print(f"LLM validation error for {url_data.get('url', 'unknown')}: {str(e)}")
             return False
     
-    def search_blog_subpages(self, base_blog_url, max_results=10):
+    def search_blog_subpages(self, base_blog_url, max_results=50):
         """Use Google Custom Search to find all URLs from the same domain as base_blog_url"""
         if not self.google_service:
             print("Google Search API not available. Skipping blog subpage search.")
@@ -404,9 +404,9 @@ class BlogDiscovery:
         print(f"Searching for blog subpages of {base_blog_url}")
         parsed = urlparse(base_blog_url)
         domain = parsed.netloc
-        print(f"Domain: {domain}")
+        # print(f"Domain: {domain}")
         # Build query: site:domain
-        query = f"site:{domain} blog"
+        query = f'site:{domain} "blog"'
         print(f"Google searching for blog subpages with query: {query}")
         results = self._google_search2(query, max_results=max_results)
         # Filter URLs to only those that start with the base_blog_url

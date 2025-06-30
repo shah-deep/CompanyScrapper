@@ -359,12 +359,12 @@ def add_urls_to_existing_file(
         }
 
 
-
 def crawl_trusted_base_urls_api(
     base_urls: List[str],
     skip_words: Optional[List[str]] = None,
     max_pages_per_domain: int = 50,
-    output_file: Optional[str] = None
+    output_file: Optional[str] = None,
+    homepage_url: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     API function to crawl trusted base URLs and save discovered subpages.
@@ -373,6 +373,7 @@ def crawl_trusted_base_urls_api(
         skip_words: List of words to skip in URLs.
         max_pages_per_domain: Max pages to crawl per base URL.
         output_file: Output file name (optional).
+        homepage_url: The homepage URL to crawl if base_urls is empty.
     Returns:
         dict with keys: success, discovered_urls, output_file
     """
@@ -381,7 +382,8 @@ def crawl_trusted_base_urls_api(
             base_urls=base_urls,
             skip_words=skip_words,
             max_pages_per_domain=max_pages_per_domain,
-            output_file=output_file
+            output_file=output_file,
+            homepage_url=homepage_url
         )
         return {
             'success': True,

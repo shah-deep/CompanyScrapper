@@ -86,7 +86,8 @@ Examples:
             base_urls=base_urls_for_crawl,
             skip_words=args.skip_words,
             max_pages_per_domain=args.max_pages,
-            output_file=args.output
+            output_file=args.output,
+            homepage_url=args.url
         )
         if result['success']:
             print(f"\nCrawl complete. {len(result['discovered_urls'])} unique URLs saved to {result['output_file']}")
