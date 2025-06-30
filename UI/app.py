@@ -260,18 +260,16 @@ def scrape_company_worker(task_id: str, team_id: str, user_id: str, additional_u
             'result': None
         }
         
-        # Add additional URLs if provided
-        if additional_urls or additional_text:
-            active_tasks[task_id]['progress'] = 'Adding additional URLs to file...'
-            add_result = add_urls_to_existing_file(
-                team_id=team_id,
-                additional_urls=additional_urls if additional_urls else None,
-                additional_text=additional_text if additional_text else None
-            )
-            if add_result['success']:
-                active_tasks[task_id]['progress'] = f'Added {add_result.get("urls_added", 0)} new URLs'
-            else:
-                active_tasks[task_id]['progress'] = f'Failed to add URLs: {add_result.get("error", "Unknown error")}'
+        # Ensure the file exists if additional URLs or text are provided
+        file_path = get_url_file_path(team_id)
+        if (additional_urls or additional_text) and not os.path.exists(file_path):
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    pass
+                active_tasks[task_id]['progress'] += " URL file did not exist, created new file."
+            except Exception as e:
+                active_tasks[task_id]['progress'] += f" Failed to create URL file: {str(e)}"
+                return
         
         # Perform scraping
         active_tasks[task_id]['progress'] = 'Processing URLs and extracting knowledge...'
