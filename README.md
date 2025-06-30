@@ -2,6 +2,8 @@
 
 [![Video Demo](https://img.shields.io/badge/Watch%20Demo-YouTube-red?logo=youtube)](https://youtu.be/o__WmIZd0x8)
 
+**App is hosted at: [https://data-scrapper.up.railway.app](https://data-scrapper.up.railway.app)**
+
 A modern application to discover, crawl, and extract structured knowledge from company websites. It provides a user-friendly web interface for extracting company information, discovering related URLs, blogs, and technical content, and organizing the results for further analysis.
 
 ## Features
@@ -12,6 +14,12 @@ A modern application to discover, crawl, and extract structured knowledge from c
 - **Knowledge Scrapper**: Scrapes and processes technical content from discovered URLs, supporting HTML, PDF, and plain text.
 - **Database Integration**: Stores extracted knowledge in a MongoDB database for search and statistics.
 - **Modern Web UI**: Elegant Flask-based interface for running crawls, scrapes, and viewing results.
+
+## Demo Team IDs
+You can check existing data for the following team IDs:
+
+- `aline123`
+- `quill123`
 
 ## How to Run (Web UI)
 1. Install dependencies:
