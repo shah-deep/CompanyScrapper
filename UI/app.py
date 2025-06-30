@@ -143,8 +143,7 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
                         additional_text: str, max_pages: int, skip_external: bool, 
                         skip_founder_blogs: bool, skip_founder_search: bool, skip_words: list):
     """Worker function for crawling company in a separate thread"""
-    import threading
-    import time
+    
     team_id = team_id.lower()
     active_tasks[task_id] = {
         'status': 'running',
@@ -189,7 +188,8 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
             base_urls=base_urls_for_crawl,
             skip_words=skip_words if skip_words else None,
             max_pages_per_domain=max_pages,
-            output_file=file_path
+            output_file=file_path,
+            homepage_url=company_url
         )
         if crawl_result.get('success'):
             discovered_urls = crawl_result.get('discovered_urls', [])

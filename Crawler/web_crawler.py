@@ -218,7 +218,7 @@ class WebCrawler:
         print(f"Crawl completed. Found {len(self.found_urls)} pages and {len(self.blog_urls)} blog posts.")
         return self.found_urls, self.blog_urls
 
-def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50, output_file=None):
+def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50, output_file=None, homepage_url=None):
     """
     Crawl all unique subpages for each trusted base URL, applying skip word filtering only.
     Args:
@@ -226,6 +226,7 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
         skip_words: List of words to skip in URLs.
         max_pages_per_domain: Max pages to crawl per base URL.
         output_file: File to save discovered URLs (should be provided; if not, do not write to trusted_base_urls.txt)
+        homepage_url: The homepage URL to crawl if base_urls is empty.
     Returns:
         Set of all discovered URLs.
     """
@@ -233,7 +234,17 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
         from .config import SKIP_URL_WORDS
         skip_words = SKIP_URL_WORDS
 
+    # Always crawl the homepage if no base_urls are provided
+    if not base_urls or len(base_urls) == 0:
+        if homepage_url:
+            print(f"No base URLs provided, defaulting to homepage: {homepage_url}")
+            base_urls = [homepage_url]
+        else:
+            print("No base URLs or homepage provided. Nothing to crawl.")
+            return set()
+    
     all_discovered_urls = set()
+    base_urls.append(homepage_url)
     base_urls = list(set(base_urls))
 
     # Only write to output_file if provided
@@ -276,7 +287,7 @@ def crawl_trusted_base_urls(base_urls, skip_words=None, max_pages_per_domain=50,
             blog_discovery = BlogDiscovery()
             google_blog_urls = set(blog_discovery.search_blog_subpages(base_url, max_results=30))
             # Always include the homepage URL itself
-            google_blog_urls.add(base_url)
+            print(f"Google-discovered blog subpages: {google_blog_urls}")
             print(f"Adding {len(google_blog_urls)} Google-discovered blog subpages (including homepage) to crawl queue.")
             for url in google_blog_urls:
                 if url not in visited_urls:
