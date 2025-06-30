@@ -42,21 +42,21 @@ Follow these steps for a typical workflow using the web UI:
 1. **Open Crawler and Add Company Webpage**
 
    - Enter the company website URL (e.g., `https://www.numeric.io/`) and specify a team ID (e.g., `numeric20`).
-   - ![Step 1: Add company webpage in Crawler](image showing how for https://www.numeric.io/ webpage with team_id numeric20 )
+   - ![Step 1: Add company webpage in Crawler](demo/1.png)
 2. **Go to Scrapper and Add Team ID**
 
    - Enter the same team ID (`numeric20`).
    - Ensure **Iterative Subdirectory Discovery** is turned **on**.
-   - ![Step 2: Add team ID in Scrapper and enable Iterative Subdirectory Discovery](image)
+   - ![Step 2: Add team ID in Scrapper and enable Iterative Subdirectory Discovery](demo/2.png)
 3. **Return to Crawler and Enable External URL Search**
 
    - Turn **off** the "Skip external URL search" option.
    - Repeat the crawl with the same parameters.
-   - ![Step 3: Turn off skip external url search in Crawler](image)
+   - ![Step 3: Turn off skip external url search in Crawler](demo/3.png)
 4. **Go to Scrapper and Turn Off Iterative Subdirectory Discovery**
 
    - In Scrapper, turn **off** the **Iterative Subdirectory Discovery** option and start the scrape.
-   - ![Step 4: Turn off Iterative Subdirectory Discovery in Scrapper and start](image)
+   - ![Step 4: Turn off Iterative Subdirectory Discovery in Scrapper and start](demo/4.png)
 
 ---
 
