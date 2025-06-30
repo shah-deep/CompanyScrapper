@@ -183,25 +183,26 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
             else:
                 active_tasks[task_id]['progress'] += f" Failed to add original additional URLs: {add_result.get('error', 'Unknown error')}"
         
-
-            crawl_result = crawl_trusted_base_urls_api(
-                base_urls=additional_urls,
-                skip_words=skip_words if skip_words else None,
-                max_pages_per_domain=max_pages,
-                output_file=file_path
+        # Ensure at least the company_url is used for blog subpage search
+        base_urls_for_crawl = additional_urls if additional_urls else [company_url]
+        crawl_result = crawl_trusted_base_urls_api(
+            base_urls=base_urls_for_crawl,
+            skip_words=skip_words if skip_words else None,
+            max_pages_per_domain=max_pages,
+            output_file=file_path
+        )
+        if crawl_result.get('success'):
+            discovered_urls = crawl_result.get('discovered_urls', [])
+            add_result = add_urls_to_existing_file(
+                team_id=team_id,
+                additional_urls=discovered_urls
             )
-            if crawl_result.get('success'):
-                discovered_urls = crawl_result.get('discovered_urls', [])
-                add_result = add_urls_to_existing_file(
-                    team_id=team_id,
-                    additional_urls=discovered_urls
-                )
-                if add_result.get('success'):
-                    active_tasks[task_id]['progress'] += f" Added {add_result.get('urls_added', 0)} discovered subpages from additional URLs."
-                else:
-                    active_tasks[task_id]['progress'] += f" Failed to add discovered subpages: {add_result.get('error', 'Unknown error')}"
+            if add_result.get('success'):
+                active_tasks[task_id]['progress'] += f" Added {add_result.get('urls_added', 0)} discovered subpages from additional URLs."
             else:
-                active_tasks[task_id]['progress'] += f" Failed to crawl additional URLs: {crawl_result.get('error', 'Unknown error')}"
+                active_tasks[task_id]['progress'] += f" Failed to add discovered subpages: {add_result.get('error', 'Unknown error')}"
+        else:
+            active_tasks[task_id]['progress'] += f" Failed to crawl additional URLs: {crawl_result.get('error', 'Unknown error')}"
         # Also add any additional_text URLs
         if additional_text:
             add_result = add_urls_to_existing_file(
