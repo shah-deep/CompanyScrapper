@@ -406,7 +406,7 @@ class BlogDiscovery:
         domain = parsed.netloc
         print(f"Domain: {domain}")
         # Build query: site:domain
-        query = f"site:{domain} blog podcast post"
+        query = f"site:{domain} blog"
         print(f"Google searching for blog subpages with query: {query}")
         results = self._google_search2(query, max_results=max_results)
         # Filter URLs to only those that start with the base_blog_url
