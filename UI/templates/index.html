@@ -56,10 +56,6 @@
                                     <input type="text" class="form-control" id="teamId" placeholder="team_001" required>
                                 </div>
                                 
-                                <div class="mb-3">
-                                    <label for="skipWords" class="form-label">Skip Words (one per line)</label>
-                                    <textarea class="form-control" id="skipWords" rows="3" placeholder="reddit&#10;login&#10;terms"></textarea>
-                                </div>
                             </div>
                             
                             <div class="col-md-6">
@@ -68,11 +64,11 @@
                                     <textarea class="form-control" id="additionalUrls" rows="3" placeholder="URLs starting with https:// or http://"></textarea>
                                 </div>
                                 
-                                <div class="mb-3">
+                                <div class="mb-3" style="display: none;">
                                     <label for="maxPages" class="form-label">Maximum Pages to Crawl</label>
                                     <input type="number" class="form-control" id="maxPages" value="20" min="1" max="1000">
                                 </div>
-                                
+
                                 <div class="mb-3">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" id="skipExternal">
@@ -80,6 +76,11 @@
                                             Skip External URL Search
                                         </label>
                                     </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="skipWords" class="form-label">Skip Words (one per line)</label>
+                                    <textarea class="form-control" id="skipWords" rows="2" placeholder="reddit&#10;login&#10;terms"></textarea>
                                 </div>
                             </div>
                         </div>
@@ -257,5 +258,33 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsonview@1.2.0/dist/jquery.jsonview.min.css">
     <script src="https://cdn.jsdelivr.net/npm/jsonview@1.2.0/dist/jquery.jsonview.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+    $(document).ready(function() {
+        function activateTabFromHash() {
+            var hash = window.location.hash;
+            if (hash) {
+                var tabTrigger = $(`button[data-bs-target="${hash}"]`);
+                if (tabTrigger.length) {
+                    var tab = new bootstrap.Tab(tabTrigger[0]);
+                    tab.show();
+                }
+            }
+        }
+
+        // Activate tab on page load
+        activateTabFromHash();
+
+        // Activate tab when hash changes
+        window.addEventListener('hashchange', activateTabFromHash);
+
+        // Update hash when tab is clicked
+        $('#mainTabs button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+            var target = $(e.target).data('bs-target');
+            if (target) {
+                window.location.hash = target;
+            }
+        });
+    });
+    </script>
 </body>
 </html> 
