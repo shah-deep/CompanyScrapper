@@ -57,6 +57,11 @@ const Validation = {
         document.getElementById('downloadUrlsDataBtn').disabled = !this.validateTeamId(dataTeamId);
     },
 
+    validateDeleteButtons() {
+        const dataTeamId = document.getElementById('dataTeamId').value.trim().toLowerCase();
+        document.getElementById('deleteUrlsDataBtn').disabled = !this.validateTeamId(dataTeamId);
+    },
+
     validateRefreshButton() {
         const teamId = document.getElementById('teamId').value.trim().toLowerCase();
         document.getElementById('refreshUrlsBtn').disabled = !this.validateTeamId(teamId);
@@ -68,6 +73,7 @@ const Validation = {
         this.validateScrapperForm();
         this.validateDataForm();
         this.validateDownloadButtons();
+        this.validateDeleteButtons();
         this.validateRefreshButton();
     }
 };
@@ -430,6 +436,41 @@ const ButtonHandlers = {
                     Validation.validateRefreshButton(); // Re-enable button if valid
                 });
         }
+    },
+
+    // Delete button
+    handleDeleteUrlsData() {
+        const teamId = document.getElementById('dataTeamId').value.trim().toLowerCase();
+        if (Validation.validateTeamId(teamId)) {
+            if (confirm(`Are you sure you want to delete all files for team "${teamId}"? This action cannot be undone.`)) {
+                // Disable button during request
+                document.getElementById('deleteUrlsDataBtn').disabled = true;
+
+                fetch(`/api/delete/${teamId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        Utils.showAlert(`Successfully deleted: ${data.deleted_files.join(', ')}`, 'success');
+                        // Clear the displays
+                        document.getElementById('urlsContent').innerHTML = '';
+                        document.getElementById('dataContent').innerHTML = '';
+                        document.getElementById('urlsSection').style.display = 'none';
+                        document.getElementById('dataSection').style.display = 'none';
+                    } else {
+                        Utils.showAlert('Delete failed: ' + data.error, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    Utils.showAlert('Error deleting files', 'danger');
+                })
+                .finally(() => {
+                    Validation.validateDeleteButtons(); // Re-enable button if valid
+                });
+            }
+        }
     }
 };
 
@@ -527,6 +568,7 @@ const EventListeners = {
         document.getElementById('downloadUrlsBtn').addEventListener('click', ButtonHandlers.handleDownloadUrls);
         document.getElementById('downloadUrlsDataBtn').addEventListener('click', ButtonHandlers.handleDownloadUrlsData);
         document.getElementById('refreshUrlsBtn').addEventListener('click', ButtonHandlers.handleRefreshUrls);
+        document.getElementById('deleteUrlsDataBtn').addEventListener('click', ButtonHandlers.handleDeleteUrlsData);
 
         // Form field listeners for validation
         this.setupFormValidationListeners();
@@ -553,6 +595,7 @@ const EventListeners = {
             e.target.value = e.target.value.toLowerCase();
             Validation.validateDataForm();
             Validation.validateDownloadButtons();
+            Validation.validateDeleteButtons();
         });
 
         // Additional form field listeners for comprehensive validation
