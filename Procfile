@@ -1,1 +1,1 @@
-web: cd UI && gunicorn -b 0.0.0.0:$PORT app:app 
+web: gunicorn -b 0.0.0.0:$PORT UI.app:app
