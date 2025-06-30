@@ -338,16 +338,17 @@ def show_crawler_section():
             with st.expander("View extracted URLs"):
                 for i, url in enumerate(additional_urls_list, 1):
                     st.write(f"{i}. {url}")
-        
+                    
         # Submit button
         submit_button = st.form_submit_button(
             "🚀 Start Crawling",
-            disabled=not validate_url(company_url) or not team_id or not st.session_state.crawl_completed
+            disabled=((not validate_url(company_url)) or (not team_id) or (not st.session_state.crawl_completed))
         )
     
     # Handle form submission
-    if submit_button and company_url and team_id:
+    if submit_button:
         st.session_state.crawl_completed = False
+        print(company_url, team_id)
         
         # Create progress placeholder
         progress_placeholder = st.empty()

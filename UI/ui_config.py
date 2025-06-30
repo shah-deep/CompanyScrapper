@@ -5,7 +5,7 @@ UI Configuration Settings
 
 # Streamlit configuration
 STREAMLIT_CONFIG = {
-    "server.port": 8501,
+    "server.port": 9501,
     "server.address": "localhost",
     "browser.gatherUsageStats": False,
     "theme.base": "light",

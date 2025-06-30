@@ -54,7 +54,7 @@ def main():
     
     print("🚀 Starting Streamlit application...")
     print("   The UI will open in your default browser")
-    print("   If it doesn't open automatically, go to: http://localhost:8501")
+    print("   If it doesn't open automatically, go to: http://localhost:9501")
     print("   Press Ctrl+C to stop the application")
     print("-" * 50)
     
@@ -63,7 +63,7 @@ def main():
         os.chdir(script_dir)
         subprocess.run([
             sys.executable, "-m", "streamlit", "run", "app.py",
-            "--server.port", "8501",
+            "--server.port", "9501",
             "--server.address", "localhost"
         ])
     except KeyboardInterrupt:
