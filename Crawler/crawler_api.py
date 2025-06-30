@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from typing import List, Set, Dict, Any, Optional
 
 from .company_extractor import CompanyExtractor
-from .web_crawler import WebCrawler
+from .web_crawler import WebCrawler, crawl_trusted_base_urls
 from .blog_discovery import BlogDiscovery
 from .founder_discovery import FounderDiscovery
 from .url_aggregator import URLAggregator
@@ -352,6 +352,42 @@ def add_urls_to_existing_file(
             'new_urls': list(new_urls)
         }
         
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+
+def crawl_trusted_base_urls_api(
+    base_urls: List[str],
+    skip_words: Optional[List[str]] = None,
+    max_pages_per_domain: int = 50,
+    output_file: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    API function to crawl trusted base URLs and save discovered subpages.
+    Args:
+        base_urls: List of base URLs to crawl.
+        skip_words: List of words to skip in URLs.
+        max_pages_per_domain: Max pages to crawl per base URL.
+        output_file: Output file name (optional).
+    Returns:
+        dict with keys: success, discovered_urls, output_file
+    """
+    try:
+        discovered_urls = crawl_trusted_base_urls(
+            base_urls=base_urls,
+            skip_words=skip_words,
+            max_pages_per_domain=max_pages_per_domain,
+            output_file=output_file
+        )
+        return {
+            'success': True,
+            'discovered_urls': list(discovered_urls),
+            'output_file': output_file or 'trusted_base_urls.txt'
+        }
     except Exception as e:
         return {
             'success': False,

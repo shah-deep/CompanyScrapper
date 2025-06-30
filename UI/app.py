@@ -23,7 +23,7 @@ project_root = script_dir.parent
 sys.path.append(str(project_root))
 
 # Import the API modules
-from Crawler.crawler_api import crawl_company, add_urls_to_existing_file, extract_urls_from_text
+from Crawler.crawler_api import crawl_company, add_urls_to_existing_file, extract_urls_from_text, crawl_trusted_base_urls_api
 from Scrapper.scrapper_api import (
     scrape_company_knowledge, 
     search_company_knowledge, 
@@ -113,7 +113,51 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
             'progress': 'Starting company crawling...',
             'result': None
         }
-        
+
+        # If there are additional URLs, recursively crawl them and add all discovered subpages to the file
+        if additional_urls:
+            active_tasks[task_id]['progress'] = 'Recursively discovering subpages for additional URLs...'
+            crawl_result = crawl_trusted_base_urls_api(
+                base_urls=additional_urls,
+                skip_words=skip_words if skip_words else None,
+                max_pages_per_domain=max_pages
+            )
+            if crawl_result.get('success'):
+                discovered_urls = crawl_result.get('discovered_urls', [])
+                # Add all discovered URLs to the team's file
+                add_result = add_urls_to_existing_file(
+                    team_id=team_id,
+                    additional_urls=discovered_urls
+                )
+                if add_result.get('success'):
+                    active_tasks[task_id]['progress'] = f"Added {add_result.get('urls_added', 0)} discovered subpages from additional URLs."
+                else:
+                    active_tasks[task_id]['progress'] = f"Failed to add discovered subpages: {add_result.get('error', 'Unknown error')}"
+            else:
+                active_tasks[task_id]['progress'] = f"Failed to crawl additional URLs: {crawl_result.get('error', 'Unknown error')}"
+
+        # Also add the original additional_urls themselves to the file (if not already present)
+        if additional_urls:
+            add_result = add_urls_to_existing_file(
+                team_id=team_id,
+                additional_urls=additional_urls
+            )
+            if add_result.get('success'):
+                active_tasks[task_id]['progress'] += f" Added {add_result.get('urls_added', 0)} original additional URLs."
+            else:
+                active_tasks[task_id]['progress'] += f" Failed to add original additional URLs: {add_result.get('error', 'Unknown error')}"
+
+        # Also add any additional_text URLs
+        if additional_text:
+            add_result = add_urls_to_existing_file(
+                team_id=team_id,
+                additional_text=additional_text
+            )
+            if add_result.get('success'):
+                active_tasks[task_id]['progress'] += f" Added {add_result.get('urls_added', 0)} URLs from additional text."
+            else:
+                active_tasks[task_id]['progress'] += f" Failed to add URLs from additional text: {add_result.get('error', 'Unknown error')}"
+
         # Perform crawling
         result = crawl_company(
             company_url=company_url,
@@ -127,7 +171,7 @@ def crawl_company_worker(task_id: str, company_url: str, team_id: str, additiona
             skip_words=skip_words if skip_words else None,
             simple_output=True
         )
-        
+
         active_tasks[task_id] = {
             'status': 'completed',
             'progress': 'Crawling completed successfully!' if result['success'] else f'Crawling failed: {result.get("error", "Unknown error")}',
