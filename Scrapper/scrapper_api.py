@@ -14,22 +14,18 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from main import KnowledgeScraper
 
 
-def get_url_file_path(company_url: str) -> str:
+def get_url_file_path(team_id: str) -> str:
     """
-    Get the URL file path for a given company URL
+    Get the URL file path for a given team ID
     
     Args:
-        company_url: The company URL
+        team_id: The team ID
         
     Returns:
         Path to the URL file
     """
-    from urllib.parse import urlparse
-    
     try:
-        parsed_url = urlparse(company_url)
-        domain = parsed_url.netloc
-        filename = f"{domain}.txt"
+        filename = f"{team_id}.txt"
         
         # Get the project root directory (two levels up from Scrapper)
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -39,11 +35,10 @@ def get_url_file_path(company_url: str) -> str:
         
         return file_path
     except Exception as e:
-        raise ValueError(f"Invalid company URL: {company_url}")
+        raise ValueError(f"Invalid team ID: {team_id}")
 
 
 def scrape_company_knowledge(
-    company_url: str,
     team_id: str,
     user_id: str = "",
     processing_mode: str = "multiprocessing",
@@ -52,10 +47,9 @@ def scrape_company_knowledge(
     skip_existing_urls: bool = False
 ) -> Dict[str, Any]:
     """
-    Scrape knowledge from a company's URL file
+    Scrape knowledge from a team's URL file
     
     Args:
-        company_url: The company URL (used to find the URL file)
         team_id: Team ID for organizing knowledge
         user_id: User ID (optional)
         processing_mode: Processing mode ("multiprocessing" or "async")
@@ -67,12 +61,12 @@ def scrape_company_knowledge(
         Dictionary containing processing results and statistics
     """
     # Get the URL file path
-    url_file_path = get_url_file_path(company_url)
+    url_file_path = get_url_file_path(team_id)
     
     if not os.path.exists(url_file_path):
         return {
             'success': False,
-            'error': f'No URL file found for {company_url}. Please run the crawler first.',
+            'error': f'No URL file found for team_id: {team_id}. Please run the crawler first.',
             'url_file_path': url_file_path
         }
     
@@ -124,15 +118,13 @@ def scrape_company_knowledge(
 
 
 def search_company_knowledge(
-    company_url: str,
     team_id: str,
     query: str
 ) -> Dict[str, Any]:
     """
-    Search existing knowledge for a company
+    Search existing knowledge for a team
     
     Args:
-        company_url: The company URL (used for context)
         team_id: Team ID for organizing knowledge
         query: Search query
         
@@ -148,7 +140,6 @@ def search_company_knowledge(
         
         return {
             'success': True,
-            'company_url': company_url,
             'team_id': team_id,
             'query': query,
             'results': results
@@ -158,21 +149,18 @@ def search_company_knowledge(
         return {
             'success': False,
             'error': str(e),
-            'company_url': company_url,
             'team_id': team_id,
             'query': query
         }
 
 
 def get_company_knowledge_statistics(
-    company_url: str,
     team_id: str
 ) -> Dict[str, Any]:
     """
-    Get knowledge statistics for a company
+    Get knowledge statistics for a team
     
     Args:
-        company_url: The company URL (used for context)
         team_id: Team ID for organizing knowledge
         
     Returns:
@@ -187,7 +175,6 @@ def get_company_knowledge_statistics(
         
         return {
             'success': True,
-            'company_url': company_url,
             'team_id': team_id,
             'statistics': stats
         }
@@ -196,20 +183,17 @@ def get_company_knowledge_statistics(
         return {
             'success': False,
             'error': str(e),
-            'company_url': company_url,
             'team_id': team_id
         }
 
 
 def get_company_knowledge(
-    company_url: str,
     team_id: str
 ) -> Dict[str, Any]:
     """
-    Get all knowledge for a company
+    Get all knowledge for a team
     
     Args:
-        company_url: The company URL (used for context)
         team_id: Team ID for organizing knowledge
         
     Returns:
@@ -224,7 +208,6 @@ def get_company_knowledge(
         
         return {
             'success': True,
-            'company_url': company_url,
             'team_id': team_id,
             'knowledge': knowledge
         }
@@ -233,6 +216,5 @@ def get_company_knowledge(
         return {
             'success': False,
             'error': str(e),
-            'company_url': company_url,
             'team_id': team_id
         }

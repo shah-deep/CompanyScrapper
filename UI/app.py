@@ -85,14 +85,10 @@ def validate_url(url: str) -> bool:
     return url.startswith(('http://', 'https://'))
 
 
-def get_url_file_path(company_url: str) -> str:
-    """Get the URL file path for a given company URL"""
-    from urllib.parse import urlparse
-    
+def get_url_file_path(team_id: str) -> str:
+    """Get the URL file path for a given team ID"""
     try:
-        parsed_url = urlparse(company_url)
-        domain = parsed_url.netloc
-        filename = f"{domain}.txt"
+        filename = f"{team_id}.txt"
         
         output_dir = project_root / 'data' / 'scrapped_urls'
         file_path = output_dir / filename
@@ -102,11 +98,11 @@ def get_url_file_path(company_url: str) -> str:
         return ""
 
 
-def read_url_file_content(company_url: str) -> str:
-    """Read the content of the URL file for a company"""
-    file_path = get_url_file_path(company_url)
+def read_url_file_content(team_id: str) -> str:
+    """Read the content of the URL file for a team"""
+    file_path = get_url_file_path(team_id)
     if not file_path or not os.path.exists(file_path):
-        return "No URL file found for this company."
+        return "No URL file found for this team."
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -116,17 +112,19 @@ def read_url_file_content(company_url: str) -> str:
         return f"Error reading file: {str(e)}"
 
 
-def crawl_company_worker(company_url: str, additional_urls: list, additional_text: str, 
+def crawl_company_worker(company_url: str, team_id: str, additional_urls: list, additional_text: str, 
                         max_pages: int, skip_external: bool, skip_founder_blogs: bool, 
                         skip_founder_search: bool, skip_words: list, progress_placeholder):
     """Worker function for crawling company in a separate thread"""
     try:
         # Update progress
-        progress_placeholder.info("Starting company crawling...")
+        progress_placeholder.info("🚀 Starting company crawling...")
+        time.sleep(1)
         
         # Perform crawling
         result = crawl_company(
             company_url=company_url,
+            team_id=team_id,
             additional_urls=additional_urls if additional_urls else None,
             additional_text=additional_text if additional_text else None,
             max_pages=max_pages,
@@ -142,38 +140,42 @@ def crawl_company_worker(company_url: str, additional_urls: list, additional_tex
         st.session_state.crawl_completed = True
         
         if result['success']:
-            progress_placeholder.success("Crawling completed successfully!")
+            progress_placeholder.success("✅ Crawling completed successfully!")
         else:
-            progress_placeholder.error(f"Crawling failed: {result.get('error', 'Unknown error')}")
+            progress_placeholder.error(f"❌ Crawling failed: {result.get('error', 'Unknown error')}")
             
     except Exception as e:
         st.session_state.crawl_result = {'success': False, 'error': str(e)}
         st.session_state.crawl_completed = True
-        progress_placeholder.error(f"Crawling failed: {str(e)}")
+        progress_placeholder.error(f"❌ Crawling failed: {str(e)}")
 
 
-def scrape_company_worker(company_url: str, team_id: str, user_id: str, 
+def scrape_company_worker(team_id: str, user_id: str, 
                          additional_urls: list, additional_text: str,
                          skip_existing_urls: bool, iterative: bool, 
                          processing_mode: str, progress_placeholder):
     """Worker function for scraping company in a separate thread"""
     try:
         # Update progress
-        progress_placeholder.info("Starting knowledge scraping...")
+        progress_placeholder.info("🚀 Starting knowledge scraping...")
+        time.sleep(1)
         
         # Add additional URLs if provided
         if additional_urls or additional_text:
+            progress_placeholder.info("📝 Adding additional URLs to file...")
             add_result = add_urls_to_existing_file(
-                company_url=company_url,
+                team_id=team_id,
                 additional_urls=additional_urls if additional_urls else None,
                 additional_text=additional_text if additional_text else None
             )
             if add_result['success']:
-                progress_placeholder.info(f"Added {add_result.get('urls_added', 0)} new URLs")
+                progress_placeholder.info(f"✅ Added {add_result.get('urls_added', 0)} new URLs")
+            else:
+                progress_placeholder.warning(f"⚠️ Failed to add URLs: {add_result.get('error', 'Unknown error')}")
         
         # Perform scraping
+        progress_placeholder.info("🔍 Processing URLs and extracting knowledge...")
         result = scrape_company_knowledge(
-            company_url=company_url,
             team_id=team_id,
             user_id=user_id,
             processing_mode=processing_mode,
@@ -187,14 +189,14 @@ def scrape_company_worker(company_url: str, team_id: str, user_id: str,
         st.session_state.scrape_completed = True
         
         if result['success']:
-            progress_placeholder.success("Scraping completed successfully!")
+            progress_placeholder.success("✅ Scraping completed successfully!")
         else:
-            progress_placeholder.error(f"Scraping failed: {result.get('error', 'Unknown error')}")
+            progress_placeholder.error(f"❌ Scraping failed: {result.get('error', 'Unknown error')}")
             
     except Exception as e:
         st.session_state.scrape_result = {'success': False, 'error': str(e)}
         st.session_state.scrape_completed = True
-        progress_placeholder.error(f"Scraping failed: {str(e)}")
+        progress_placeholder.error(f"❌ Scraping failed: {str(e)}")
 
 
 def extract_urls_from_combined_input(text: str) -> tuple[list, str]:
@@ -291,6 +293,12 @@ def show_crawler_section():
                 help="Enter the main website URL of the company you want to crawl"
             )
             
+            team_id = st.text_input(
+                "Team ID *",
+                placeholder="team_001",
+                help="Enter a unique team identifier for organizing the data"
+            )
+            
             skip_words = st.text_area(
                 "Skip Words (one per line)",
                 placeholder="reddit\nlogin\nterms",
@@ -334,11 +342,11 @@ def show_crawler_section():
         # Submit button
         submit_button = st.form_submit_button(
             "🚀 Start Crawling",
-            disabled=not validate_url(company_url) or not st.session_state.crawl_completed
+            disabled=not validate_url(company_url) or not team_id or not st.session_state.crawl_completed
         )
     
     # Handle form submission
-    if submit_button and company_url:
+    if submit_button and company_url and team_id:
         st.session_state.crawl_completed = False
         
         # Create progress placeholder
@@ -347,7 +355,7 @@ def show_crawler_section():
         # Start crawling in a separate thread
         thread = threading.Thread(
             target=crawl_company_worker,
-            args=(company_url, additional_urls_list, additional_text, max_pages, 
+            args=(company_url, team_id, additional_urls_list, additional_text, max_pages, 
                   skip_external, False, False, 
                   skip_words_list, progress_placeholder)
         )
@@ -379,13 +387,29 @@ def show_crawler_section():
             
             # Show file content
             st.markdown("### Generated URL File Content")
-            file_content = read_url_file_content(company_url)
-            st.text_area(
-                "URL File Content",
-                value=file_content,
-                height=300,
-                disabled=True
-            )
+            
+            # Add refresh button for file content
+            if st.button("🔄 Refresh File Content"):
+                st.rerun()
+            
+            file_content = read_url_file_content(team_id)
+            if file_content and file_content != "No URL file found for this team.":
+                st.text_area(
+                    "URL File Content",
+                    value=file_content,
+                    height=400,
+                    disabled=True,
+                    help="Scrollable content of the generated URL file"
+                )
+                
+                # Show file info
+                file_path = get_url_file_path(team_id)
+                if file_path and os.path.exists(file_path):
+                    file_size = os.path.getsize(file_path)
+                    url_count = len([line for line in file_content.split('\n') if line.strip()])
+                    st.info(f"📄 File: {os.path.basename(file_path)} | Size: {file_size} bytes | URLs: {url_count}")
+            else:
+                st.warning("No URL file found for this team. Run the crawler first to generate the file.")
             
         else:
             st.error(f"❌ Crawling failed: {st.session_state.crawl_result.get('error', 'Unknown error')}")
@@ -396,22 +420,50 @@ def show_scrapper_section():
     # st.markdown('<h2 class="section-header">📄 Knowledge Scrapper</h2>', unsafe_allow_html=True)
     st.markdown('<h1 class="main-header">🏢 Scrapper</h1>', unsafe_allow_html=True)
     
+    # Show current URL file content if available
+    st.markdown("### Current URL File Status")
+    team_id_placeholder = st.text_input(
+        "Enter team ID to check file status",
+        placeholder="team_001",
+        help="Enter a team ID to check if a URL file exists and view its content"
+    )
+    
+    if team_id_placeholder:
+        file_content = read_url_file_content(team_id_placeholder)
+        file_path = get_url_file_path(team_id_placeholder)
+        
+        if file_content and file_content != "No URL file found for this team.":
+            st.success(f"✅ URL file found: {os.path.basename(file_path)}")
+            
+            # Show file info
+            if os.path.exists(file_path):
+                file_size = os.path.getsize(file_path)
+                url_count = len([line for line in file_content.split('\n') if line.strip()])
+                st.info(f"📄 File: {os.path.basename(file_path)} | Size: {file_size} bytes | URLs: {url_count}")
+            
+            # Show file content in expander
+            with st.expander("📋 View URL File Content"):
+                st.text_area(
+                    "URL File Content",
+                    value=file_content,
+                    height=300,
+                    disabled=True,
+                    help="Current URLs in the file"
+                )
+        else:
+            st.warning("⚠️ No URL file found for this team. Run the crawler first to generate the file.")
+    
+    st.markdown("---")
 
     # Input form
     with st.form("scrapper_form"):
         col1, col2 = st.columns(2)
         
         with col1:
-            company_url = st.text_input(
-                "Company Homepage URL *",
-                placeholder="https://example.com",
-                help="Enter the company URL to scrape knowledge from"
-            )
-            
             team_id = st.text_input(
                 "Team ID *",
                 placeholder="team_001",
-                help="Enter a unique team identifier"
+                help="Enter the team ID to scrape knowledge from"
             )
             
             user_id = st.text_input(
@@ -459,11 +511,11 @@ def show_scrapper_section():
         # Submit button
         submit_button = st.form_submit_button(
             "🚀 Start Scraping",
-            disabled=not validate_url(company_url) or not team_id or not st.session_state.scrape_completed
+            disabled=not team_id or not st.session_state.scrape_completed
         )
     
     # Handle form submission
-    if submit_button and company_url and team_id:
+    if submit_button and team_id:
         st.session_state.scrape_completed = False
         
         # Create progress placeholder
@@ -472,7 +524,7 @@ def show_scrapper_section():
         # Start scraping in a separate thread
         thread = threading.Thread(
             target=scrape_company_worker,
-            args=(company_url, team_id, user_id, additional_urls_list, additional_text,
+            args=(team_id, user_id, additional_urls_list, additional_text,
                   skip_existing_urls, iterative, processing_mode, progress_placeholder)
         )
         thread.start()
@@ -520,64 +572,53 @@ def show_check_data_section():
             help="Enter the team ID to fetch data for"
         )
         
-        company_url = st.text_input(
-            "Company URL (Optional)",
-            placeholder="https://example.com",
-            help="Enter the company URL for context (optional)"
-        )
-        
         col1, col2 = st.columns(2)
         
         with col1:
-            check_button = st.form_submit_button(
-                "📊 Get Statistics",
-                disabled=not team_id
+            get_urls_button = st.form_submit_button(
+                "📄 Get URLs",
+                disabled=not team_id,
+                help="Get the URL file contents for this team"
             )
         
         with col2:
-            fetch_button = st.form_submit_button(
-                "📄 Fetch All Data",
-                disabled=not team_id
+            fetch_data_button = st.form_submit_button(
+                "🗄️ Fetch Scrapped Data",
+                disabled=not team_id,
+                help="Fetch all scraped knowledge data from database for this team"
             )
     
-    # Handle statistics request
-    if check_button and team_id:
-        with st.spinner("Fetching statistics..."):
-            result = get_company_knowledge_statistics(
-                company_url=company_url if company_url else "https://example.com",
-                team_id=team_id
-            )
+    # Handle Get URLs request
+    if get_urls_button and team_id:
+        with st.spinner("📄 Fetching URL file contents..."):
+            file_content = read_url_file_content(team_id)
+            file_path = get_url_file_path(team_id)
         
-        if result['success']:
-            st.success("✅ Statistics retrieved successfully!")
+        if file_content and file_content != "No URL file found for this team.":
+            st.success("✅ URL file retrieved successfully!")
             
-            # Display statistics
-            stats = result.get('statistics', {})
-            if stats:
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Total Items", stats.get('total_items', 0))
-                with col2:
-                    st.metric("Unique URLs", stats.get('unique_urls', 0))
-                with col3:
-                    st.metric("Content Types", stats.get('content_types', 0))
-                with col4:
-                    st.metric("Last Updated", stats.get('last_updated', 'N/A'))
-                
-                # Show detailed statistics
-                st.markdown("### Detailed Statistics")
-                st.json(stats)
-            else:
-                st.info("No statistics available for this team.")
+            # Show file info
+            if os.path.exists(file_path):
+                file_size = os.path.getsize(file_path)
+                url_count = len([line for line in file_content.split('\n') if line.strip()])
+                st.info(f"📄 File: {os.path.basename(file_path)} | Size: {file_size} bytes | URLs: {url_count}")
+            
+            # Show file content in scrollable area
+            st.markdown("### URL File Contents")
+            st.text_area(
+                "URLs (one per line)",
+                value=file_content,
+                height=400,
+                disabled=True,
+                help="Scrollable content of the URL file"
+            )
         else:
-            st.error(f"❌ Failed to get statistics: {result.get('error', 'Unknown error')}")
+            st.warning(f"📭 No URL file found for team '{team_id}'. Run the crawler first to generate the URL file.")
     
-    # Handle fetch all data request
-    if fetch_button and team_id:
-        with st.spinner("Fetching all data..."):
+    # Handle Fetch Scrapped Data request
+    if fetch_data_button and team_id:
+        with st.spinner("🗄️ Fetching scraped data from database..."):
             result = get_company_knowledge(
-                company_url=company_url if company_url else "https://example.com",
                 team_id=team_id
             )
         
@@ -586,22 +627,97 @@ def show_check_data_section():
             
             # Display knowledge data
             knowledge = result.get('knowledge', [])
-            if knowledge:
-                st.markdown("### All Knowledge Data")
+            if knowledge and isinstance(knowledge, dict) and knowledge.get('items'):
+                items = knowledge['items']
+                st.markdown("### Scraped Knowledge Data")
                 
-                # Show in scrollable JSON format
+                # Show summary first
+                st.markdown(f"#### Summary")
+                st.info(f"📊 Retrieved {len(items)} knowledge items for team '{team_id}'")
+                
+                # Create minimized version for JSON display
+                minimized_items = []
+                for item in items:
+                    minimized_item = {
+                        'title': item.get('title', 'Untitled'),
+                        'source_url': item.get('source_url', 'N/A'),
+                        'content_type': item.get('content_type', 'N/A'),
+                        'created_at': item.get('created_at', 'N/A'),
+                        'content_preview': item.get('content', '')[:200] + "..." if len(item.get('content', '')) > 200 else item.get('content', '')
+                    }
+                    minimized_items.append(minimized_item)
+                
+                minimized_knowledge = {
+                    'team_id': knowledge.get('team_id'),
+                    'created_at': knowledge.get('created_at'),
+                    'updated_at': knowledge.get('updated_at'),
+                    'total_items': len(items),
+                    'items': minimized_items
+                }
+                
+                # Show minimized JSON
+                st.markdown("#### Data Overview (Minimized JSON)")
                 st.text_area(
-                    "Knowledge Data (JSON)",
-                    value=json.dumps(knowledge, indent=2, default=str),
-                    height=600,
-                    disabled=True
+                    "Knowledge Data (Minimized JSON)",
+                    value=json.dumps(minimized_knowledge, indent=2, default=str),
+                    height=400,
+                    disabled=True,
+                    help="Minimized JSON data with content previews (first 200 characters)"
                 )
                 
+                # Show items in expandable format
+                st.markdown("#### Detailed Knowledge Items")
+                for i, item in enumerate(items, 1):
+                    with st.expander(f"Item {i}: {item.get('title', 'Untitled')}"):
+                        col1, col2 = st.columns([1, 2])
+                        with col1:
+                            st.write("**Source URL:**")
+                            st.write(item.get('source_url', 'N/A'))
+                            st.write("**Content Type:**")
+                            st.write(item.get('content_type', 'N/A'))
+                            st.write("**Created At:**")
+                            st.write(str(item.get('created_at', 'N/A')))
+                        with col2:
+                            st.write("**Content:**")
+                            content = item.get('content', 'No content available')
+                            if len(content) > 500:
+                                st.text_area(f"Content (truncated)", value=content[:500] + "...", height=150, disabled=True)
+                                if st.button(f"Show full content for item {i}"):
+                                    st.text_area(f"Full Content", value=content, height=300, disabled=True)
+                            else:
+                                st.text_area(f"Content", value=content, height=150, disabled=True)
+                
+            elif knowledge and isinstance(knowledge, list) and knowledge:
+                st.markdown("### Scraped Knowledge Data")
+                
                 # Show summary
-                st.markdown(f"### Summary")
-                st.info(f"Retrieved {len(knowledge)} knowledge items for team '{team_id}'")
+                st.markdown(f"#### Summary")
+                st.info(f"📊 Retrieved {len(knowledge)} knowledge items for team '{team_id}'")
+                
+                # Create minimized version
+                minimized_knowledge = []
+                for item in knowledge:
+                    if isinstance(item, dict):
+                        minimized_item = {
+                            'title': item.get('title', 'Untitled'),
+                            'source_url': item.get('source_url', 'N/A'),
+                            'content_type': item.get('content_type', 'N/A'),
+                            'content_preview': item.get('content', '')[:200] + "..." if len(item.get('content', '')) > 200 else item.get('content', '')
+                        }
+                        minimized_knowledge.append(minimized_item)
+                    else:
+                        minimized_knowledge.append(str(item)[:200] + "..." if len(str(item)) > 200 else str(item))
+                
+                # Show minimized JSON
+                st.text_area(
+                    "Knowledge Data (Minimized JSON)",
+                    value=json.dumps(minimized_knowledge, indent=2, default=str),
+                    height=400,
+                    disabled=True,
+                    help="Minimized JSON data with content previews"
+                )
             else:
-                st.info("No knowledge data available for this team.")
+                st.info(f"📭 No knowledge data found for team '{team_id}'. Run the scrapper first to generate knowledge data.")
         else:
             st.error(f"❌ Failed to fetch data: {result.get('error', 'Unknown error')}")
 

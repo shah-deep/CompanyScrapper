@@ -643,15 +643,65 @@ class KnowledgeScraper:
     
     def get_team_knowledge(self) -> Dict[str, Any] | None:
         """Retrieve all knowledge for the team."""
-        # This would need to be implemented with a separate database connection
-        # For now, return None as this is not the main focus
-        return None
+        try:
+            # Create a temporary database handler for this process
+            temp_handler = DatabaseHandler()
+            
+            # Create a new event loop for this thread/process
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            try:
+                # Connect and get team data
+                loop.run_until_complete(temp_handler.connect())
+                team_data = loop.run_until_complete(temp_handler.get_team_knowledge(self.team_id))
+                
+                # Clean up connection
+                loop.run_until_complete(temp_handler.disconnect())
+                
+                return team_data
+                
+            finally:
+                if loop.is_running():
+                    loop.close()
+                    
+        except Exception as e:
+            self.logger.error(f"Error retrieving team knowledge: {e}")
+            return None
     
     def search_knowledge(self, query: str) -> List[Dict[str, Any]]:
         """Search knowledge within the team."""
-        # This would need to be implemented with a separate database connection
-        # For now, return empty list as this is not the main focus
-        return []
+        try:
+            # Create a temporary database handler for this process
+            temp_handler = DatabaseHandler()
+            
+            # Create a new event loop for this thread/process
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            try:
+                # Connect and search
+                loop.run_until_complete(temp_handler.connect())
+                search_results = loop.run_until_complete(temp_handler.search_knowledge(self.team_id, query))
+                
+                # Clean up connection
+                loop.run_until_complete(temp_handler.disconnect())
+                
+                return search_results
+                
+            finally:
+                if loop.is_running():
+                    loop.close()
+                    
+        except Exception as e:
+            self.logger.error(f"Error searching knowledge: {e}")
+            return []
     
     def get_statistics(self) -> Dict[str, Any]:
         """Get processing statistics."""
