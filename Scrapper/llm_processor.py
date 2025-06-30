@@ -103,18 +103,23 @@ class LLMProcessor:
             cleaned_fullcontent = self._clean_llm_response(combined_markdown)
             cleaned_content = self._clean_llm_response(combined_structured)
             
+            # Create item with conditional user_id
+            item = {
+                "title": title,
+                "content": cleaned_content,
+                "full_content": cleaned_fullcontent,
+                "content_type": content_type,
+                "source_url": url,
+                "author": author
+            }
+            
+            # Add user_id to item if provided
+            if user_id and user_id.strip():
+                item["user_id"] = user_id
+            
             return {
                 "team_id": team_id,
-                "items": [
-                    {
-                        "title": title,
-                        "content": cleaned_content,
-                        "full_content": cleaned_fullcontent,
-                        "content_type": content_type,
-                        "source_url": url,
-                        "author": author
-                    }
-                ]
+                "items": [item]
             }
             
         except Exception as e:
@@ -405,18 +410,23 @@ class LLMProcessor:
                         cleaned_fullcontent = self._clean_llm_response(markdown_content)
                         cleaned_content = self._clean_llm_response(structured_content)
                         
+                        # Create item with conditional user_id
+                        item = {
+                            "title": final_title,
+                            "content": cleaned_content,
+                            "full_content": cleaned_fullcontent,
+                            "content_type": final_content_type,
+                            "source_url": url,
+                            "author": final_author
+                        }
+                        
+                        # Add user_id to item if provided
+                        if user_id and user_id.strip():
+                            item["user_id"] = user_id
+                        
                         return {
                             "team_id": team_id,
-                            "items": [
-                                {
-                                    "title": final_title,
-                                    "content": cleaned_content,
-                                    "full_content": cleaned_fullcontent,
-                                    "content_type": final_content_type,
-                                    "source_url": url,
-                                    "author": final_author
-                                }
-                            ]
+                            "items": [item]
                         }
                 except Exception as e:
                     self.logger.error(f"Error parsing LLM response: {e}")
@@ -436,17 +446,22 @@ class LLMProcessor:
                             fallback_title = clean_line
                             break
             
+            # Create item with conditional user_id
+            item = {
+                "title": fallback_title,
+                "content": markdown_content,
+                "content_type": content_type,
+                "source_url": url,
+                "author": author
+            }
+            
+            # Add user_id to item if provided
+            if user_id and user_id.strip():
+                item["user_id"] = user_id
+            
             return {
                 "team_id": team_id,
-                "items": [
-                    {
-                        "title": fallback_title,
-                        "content": markdown_content,
-                        "content_type": content_type,
-                        "source_url": url,
-                        "author": author
-                    }
-                ]
+                "items": [item]
             }
                 
         except Exception as e:
